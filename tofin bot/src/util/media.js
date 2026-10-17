@@ -89,4 +89,87 @@ async function fitVideo(buffer, limit) {
   }
 }
 
-module.exports = { download, getJson, uploadLimit, fitVideo, UA, MB };
+function ffmpegBin() {
+  try {
+    const p = require("ffmpeg-static");
+    if (p && fs.existsSync(p)) return p;
+  } catch {}
+  return "ffmpeg"; // fall back to one installed on the system
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(ffmpegBin(), ["-hide_banner", "-nostdin", ...args], { windowsHide: true });
+    let stderr = "";
+    p.stderr.on("data", (d) => { stderr = (stderr + d).slice(-20000); });
+    p.on("error", reject);
+    p.on("close", (code) => resolve({ code, stderr }));
+  });
+}
+
+function sniffExt(buf) {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "png";
+  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "webp";
+  return "jpg";
+}
+
+// TikTok photo post → vertical MP4: each photo on a blurred backdrop, song as the soundtrack.
+async function makeSlideshow(images, audio, limit) {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "slide-"));
+  try {
+    const files = [];
+    for (const [i, buf] of images.entries()) {
+      const f = path.join(dir, `img${i}.${sniffExt(buf)}`);
+      await fs.promises.writeFile(f, buf);
+      files.push(f);
+    }
+
+    let audioFile = null;
+    let per = 3;
+    if (audio?.length) {
+      audioFile = path.join(dir, "audio.bin");
+      await fs.promises.writeFile(audioFile, audio);
+      const { stderr } = await runFfmpeg(["-i", audioFile]);
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (m) {
+        const dur = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+        per = Math.min(6, Math.max(2.5, dur / files.length)); // spread the song over the photos
+      }
+    }
+    const total = per * files.length;
+
+    const list = files.map((f) => `file '${f.replace(/'/g, "'\\''")}'\nduration ${per}`).join("\n")
+      + `\nfile '${files[files.length - 1].replace(/'/g, "'\\''")}'\n`;
+    const listFile = path.join(dir, "list.txt");
+    await fs.promises.writeFile(listFile, list);
+
+    const out = path.join(dir, "out.mp4");
+    const W = 720, H = 1280;
+    const graph =
+      `[0:v]split[a][b];` +
+      `[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=25:5[bg];` +
+      `[b]scale=${W}:${H}:force_original_aspect_ratio=decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=30,format=yuv420p[v]`;
+
+    const { code, stderr } = await runFfmpeg([
+      "-y",
+      "-f", "concat", "-safe", "0", "-i", listFile,
+      ...(audioFile ? ["-i", audioFile] : []),
+      "-filter_complex", graph,
+      "-map", "[v]",
+      ...(audioFile ? ["-map", "1:a:0", "-c:a", "aac", "-b:a", "128k"] : ["-an"]),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+      "-t", String(total),
+      "-movflags", "+faststart",
+      out,
+    ]);
+    if (code !== 0) throw new Error(`ffmpeg failed: ${stderr.slice(-300)}`);
+
+    const video = await fs.promises.readFile(out);
+    return fitVideo(video, limit);
+  } finally {
+    fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+module.exports = { download, getJson, uploadLimit, fitVideo, makeSlideshow, UA, MB };

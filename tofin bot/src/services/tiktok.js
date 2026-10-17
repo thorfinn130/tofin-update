@@ -1,5 +1,5 @@
 const { saveGif } = require("./gifMemory");
-const { download, getJson, uploadLimit, fitVideo } = require("../util/media");
+const { download, getJson, uploadLimit, fitVideo, makeSlideshow } = require("../util/media");
 
 const TIKTOK_REGEX = /https?:\/\/(?:www\.|vm\.|vt\.|m\.)?tiktok\.com\/[^\s]+/i;
 
@@ -22,6 +22,17 @@ async function lookup(url) {
 // Returns { buffer, fileName, mediaUrl, isGif } or { link } when it can't be uploaded.
 async function fetchTikTokResult(url, limit = uploadLimit(null)) {
   const data = await lookup(url);
+
+  // Photo post ("image with a song"): turn the photos + the sound into one MP4.
+  if (Array.isArray(data.images) && data.images.length) {
+    const absolute = (u) => (u?.startsWith("/") ? `https://www.tikwm.com${u}` : u);
+    const imgs = await Promise.all(data.images.slice(0, 35).map((u) => download(absolute(u))));
+    const soundUrl = absolute(data.music_info?.play || data.music);
+    const sound = soundUrl ? await download(soundUrl).catch(() => null) : null;
+    const video = await makeSlideshow(imgs, sound, limit);
+    if (!video) return { link: url, isGif: false };
+    return { buffer: video, fileName: "tiktok.mp4", isGif: false };
+  }
 
   let videoUrl = data.play || data.hdplay;
   if (!videoUrl) throw new Error("This TikTok has no video (photo slideshow?)");

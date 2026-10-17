@@ -231,7 +231,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 
 client.on("interactionCreate", async (i) => {
   if (i.isButton() || i.isStringSelectMenu()) return buttons.handle(i);
-  if (i.isModalSubmit()) return buttons.handleModal(i);
   slash.handle(i);
 });
 

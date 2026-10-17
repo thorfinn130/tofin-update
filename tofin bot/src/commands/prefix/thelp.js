@@ -44,27 +44,7 @@ const CATEGORIES = {
       { name: "Backups", value: "`,backup create [name]` — save server snapshot *(admin)*\n`,backup restore <id>` — restore a backup *(admin)*\n`,backup list` — list saved backups *(admin)*", inline: false },
       { name: "Templates", value: "`,template save <name>` — save server as template *(admin)*\n`,template load <name> [roles|channels|bots]` — load *(owner)*\n`,template list` — your saved templates\n`,template delete <name>` — delete a template\n`,templatelink <name|code>` — shareable one-time link *(owner)*", inline: false },
       { name: "Join-to-Create VC", value: "`/vcset add #channel` — joining that VC creates a private channel & moves you in *(Manage Channels)*\n`/vcset remove #channel` / `/vcset list` — manage trigger channels\n> The creator gets full channel permissions automatically (rename, lock, kick, limit, etc.) — just right-click the channel in Discord, no extra commands needed", inline: false },
-      { name: "Owner Tools", value: "`,restart` — wipe all channels, roles & kick bots *(owner)*\n`,giveownership` — give bot full Administrator + highest role *(owner)*\n`,execute @role` — kick everyone (members & bots) with that role *(owner)*", inline: false },
       { name: "Invite Tracking", value: "`,invites [@user]` (`,invite`, `,inv`) — see how many people someone invited\nAutomatically tracks who invited each new member", inline: false },
-    ],
-  },
-  serverlist: {
-    label: "📜  Server List",
-    emoji: "📜",
-    color: 0x7289DA,
-    fields: [
-      { name: "View", value: "`,servers` — view the list of partnered/listed servers", inline: false },
-      { name: "Manage", value: "`,servers add` — opens an interactive builder (pick server, set link/desc/banner/icon/color/tags/layout) *(if permitted)*\n`,servers remove <serverId>` — remove a server *(if permitted)*\n`,servers allowed` — see who's permitted to add servers", inline: false },
-    ],
-  },
-  templateshop: {
-    label: "🧱  Template Shop",
-    emoji: "🧱",
-    color: 0xD4AF37,
-    fields: [
-      { name: "Browse & Buy", value: "`,templateshop` (`,tplshop`) — browse listings with **◀ ▶** page buttons + **🛒 Quick Buy**\nEach page shows roles, channels, price & seller\n`,templateshop buy <listingId>` — buy directly without browsing", inline: false },
-      { name: "Sell", value: "`,templateshop sell <template name> <price>` — list one of your saved templates for sale\n`,templateshop mine` — see your active listings\n`,templateshop unlist <listingId>` — take a listing down", inline: false },
-      { name: "After Buying", value: "Purchased templates are copied into **your own** `,template` collection\nUse `,template load <name>` to apply it to a server you own", inline: false },
     ],
   },
   utilities: {
@@ -100,9 +80,7 @@ function overviewEmbed(author) {
       `**<:moderation:1519184871136825395>  Moderation** — mute, ban, warn, purge\n` +
       `**<:informationbutton:1519185565222830191>  Roles & Info** — role management, userinfo\n` +
       `**🎉  Fun** — polls, giveaways, games\n` +
-      `**💾  Server Tools** — backups, templates, owner tools\n` +
-      `**📜  Server List** — view & manage listed servers\n` +
-      `**🧱  Template Shop** — buy & sell server templates\n` +
+      `**💾  Server Tools** — backups & templates\n` +
       `**🛠️  Utilities** — AI toggle & tools`
     )
     .setColor(0x5865F2)

@@ -592,7 +592,7 @@ const SYSTEM = {
     Moderation: ,mute ,ban ,warn ,warnings ,unwarn ,unmute ,unban ,lock ,unlock ,slowmode ,purge ,nickname ,announce
     Roles: ,role (give/remove a role, e.g. ,role john mod) ,roleperm ,brole ,mrole ,userinfo ,serverinfo
     Fun: ,8ball ,joke ,roast ,poll ,giveaway ,randomwinner ,emoji
-    Server: ,backup ,template ,restart ,giveownership
+    Server: ,backup ,template
     Utilities: ,aion (AI on) ,aioff (AI off)
     Help: ,help
 
