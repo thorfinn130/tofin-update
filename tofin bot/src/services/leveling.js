@@ -174,7 +174,7 @@ function meetsRequirements(user, job) {
 
 function applyJob(guildId, userId, jobId) {
   const job = getJob(jobId);
-  if (!job) return { error: `Job \`${jobId}\` not found. Use \`,tjobs list\` to see available jobs.` };
+  if (!job) return { error: `Job \`${jobId}\` not found. Use \`,jobs list\` to see available jobs.` };
   const u = getUser(guildId, userId);
   if (!meetsRequirements(u, job)) {
     const reqs = [`Level **${job.level}**`, ...Object.entries(job.stats || {}).map(([s, v]) => `**${s.toUpperCase()} ${v}**`)];

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const { extractPinterestUrl, fetchPinterestResult } = require("../../services/pinterest");
 const { saveGif } = require("../../services/gifMemory");
+const { uploadLimit } = require("../../util/media");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,7 +10,8 @@ module.exports = {
     .addStringOption((opt) =>
       opt.setName("url").setDescription("The Pinterest pin link").setRequired(true)
     )
-    .setDMPermission(true), // ✅ Allow in DMs
+    .setContexts(0, 1, 2)
+    .setIntegrationTypes(0, 1),
 
   async run(interaction) {
     const input = interaction.options.getString("url");
@@ -18,26 +20,23 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const result = await fetchPinterestResult(url);
+      const result = await fetchPinterestResult(url, uploadLimit(interaction.guild));
 
-      // Only save GIF if we're in a guild (DMs have no guild)
       if (result.isGif && result.mediaUrl && interaction.guild) {
         saveGif(interaction.guild.id, result.mediaUrl);
       }
 
-      if (result.buffer) {
-        const file = new AttachmentBuilder(result.buffer, { name: result.fileName });
-        return interaction.editReply({ embeds: [result.embed], files: [file] });
-      }
+      const files = result.files
+        ? result.files.map((f) => new AttachmentBuilder(f.buffer, { name: f.fileName }))
+        : result.buffer
+          ? [new AttachmentBuilder(result.buffer, { name: result.fileName })]
+          : [];
 
-      if (result.link) {
-        return interaction.editReply({ content: `📌 View it here: ${result.link}`, embeds: [result.embed] });
-      }
-
-      return interaction.editReply({ embeds: [result.embed] });
+      if (files.length) return interaction.editReply({ files });
+      return interaction.editReply({ content: result.link });
     } catch (err) {
       console.error("[/pinterest]", err.message);
-      return interaction.editReply({ content: `📌 Couldn't fetch media directly. View it here: ${url}` });
+      return interaction.editReply({ content: "❌ Couldn't fetch that. Check the link and try again." });
     }
   },
 };

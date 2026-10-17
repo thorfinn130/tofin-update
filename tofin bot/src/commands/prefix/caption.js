@@ -1,6 +1,7 @@
 const { AttachmentBuilder } = require("discord.js");
 const { makeStaticGif, makeCaptionedAnimatedGif, isGifBuffer, fetchBuffer } = require("../../util/gifMaker");
 const { warn, danger } = require("../../util/embed");
+const { uploadLimit } = require("../../util/media");
 
 module.exports = {
   name: "caption",
@@ -24,7 +25,7 @@ module.exports = {
     try {
       const buf = await fetchBuffer(url);
       const outBuf = isGifBuffer(buf)
-        ? await makeCaptionedAnimatedGif(url, caption)
+        ? await makeCaptionedAnimatedGif(url, caption, uploadLimit(message.guild))
         : await makeStaticGif(url, caption); // gracefully handles a non-animated link too
 
       const file = new AttachmentBuilder(outBuf, { name: "captioned.gif" });

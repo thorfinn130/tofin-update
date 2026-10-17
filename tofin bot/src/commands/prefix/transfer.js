@@ -1,11 +1,12 @@
 const { getUser, transfer, fmt } = require("../../services/economy");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { success, warn } = require("../../util/embed");
 
 module.exports = {
   name: "transfer",
   aliases: ["pay", "give"],
-  run(message, args) {
-    const target = message.mentions.users.first();
+  async run(message, args) {
+    const target = (await memberFromArgs(message, args, 0))?.user;
     if (!target || target.bot) return message.reply({ embeds: [warn("Missing User", "Mention a valid member to send TC to.\n**Usage:** `,transfer @user <amount>`")] });
     if (target.id === message.author.id) return message.reply({ embeds: [warn("Invalid", "You can't send TC to yourself.")] });
     const amount = parseInt(args[1]);

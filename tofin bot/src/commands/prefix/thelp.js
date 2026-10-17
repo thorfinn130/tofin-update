@@ -6,10 +6,10 @@ const CATEGORIES = {
     emoji: "🔨",
     color: 0xED4245,
     fields: [
-      { name: "Mute / Ban", value: "`,tmute @user <duration> [reason]` — temp mute\n`,tban @user [duration] [reason]` — ban (permanent if no duration)", inline: false },
-      { name: "Warn / Manage", value: "`,twarn @user <reason>` — warn & DM the user\n`,warnings @user` — view all warnings\n`,unwarn @user <id>` — remove a warning\n`,unmute @user` — lift a mute\n`,unban <userId>` — unban a user", inline: false },
-      { name: "Channels", value: "`,lock` / `,unlock` — lock or unlock the channel\n`,slowmode <secs>` — set slowmode (0 = off)\n`,tpurge <amount>` — delete up to 100 messages", inline: false },
-      { name: "Other", value: "`,tnickname @user [name]` (`,tnick`) — change/reset nickname\n`,announce #channel <msg>` — send an announcement", inline: false },
+      { name: "Mute / Ban", value: "`,mute @user <duration> [reason]` — temp mute\n`,ban @user [duration] [reason]` — ban (permanent if no duration)", inline: false },
+      { name: "Warn / Manage", value: "`,warn @user <reason>` — warn & DM the user\n`,warnings @user` — view all warnings\n`,unwarn @user <id>` — remove a warning\n`,unmute @user` — lift a mute\n`,unban <userId>` — unban a user", inline: false },
+      { name: "Channels", value: "`,lock` / `,unlock` — lock or unlock the channel\n`,slowmode <secs>` — set slowmode (0 = off)\n`,purge <amount>` — delete up to 100 messages", inline: false },
+      { name: "Other", value: "`,nickname @user [name]` (`,tnick`) — change/reset nickname\n`,announce #channel <msg>` — send an announcement", inline: false },
       { name: "Jail System", value: "`,setup` — one-time setup: creates mute role, jail role/channel, mod category *(Admin)*\n`,jail @user [duration] [reason]` — jail a member, optional auto-release *(Admin)*\n`,unjail @user` — release & restore previous roles *(Admin)*\n`,jail channel #channel` / `,jail role @role` — reconfigure\n`,jail config` — view current setup", inline: false },
       { name: "Automod", value: "`,automod enable` / `,automod disable` — toggle the word filter *(Admin)*\n`,automod add <word>` / `,automod remove <word>` — manage blocked words\n`,automod list` — view current blocklist\n`,automod clear` — wipe the blocklist\n`,automod status` — current config", inline: false },
       { name: "Logging", value: "`,logs add #channel <events>` — send specific events to a channel *(Admin)*\n`,logs remove #channel <events>` — stop sending those events there\n`,logs list` — see configured log channels\n`,logs events` — list all loggable event types\n`,logs ignore @user/#channel` — exclude from logs", inline: false },
@@ -20,7 +20,7 @@ const CATEGORIES = {
     emoji: "👥",
     color: 0x3498DB,
     fields: [
-      { name: "Roles", value: "`,role @role <preset>` — assign permission preset *(owner)*\nPresets: `trialmod_perm` · `mod_perm` · `admin_perm` · `coowner_perm`\n`,tbrole @role` — give to all bots\n`,tmrole @role` — give to all members\n`,r @role @user` — give a role to one user *(Manage Roles)*\n`,rc <name> [color]` — create a role, e.g. `,rc VIP gold` *(Manage Roles)*\n`,ec @role <color>` — change a role's color *(Manage Roles)*\n`,rf @role` — delete a role entirely *(Manage Roles)*", inline: false },
+      { name: "Roles", value: "`,role <user> <role>` — give a role (or take it away if they have it). Names & typos are fine *(Manage Roles)*\n`,roleperm @role <preset>` — assign permission preset *(owner)*\nPresets: `trialmod_perm` · `mod_perm` · `admin_perm` · `coowner_perm`\n`,brole @role` — give to all bots\n`,mrole @role` — give to all members\n`,rc <name> [color]` — create a role, e.g. `,rc VIP gold` *(Manage Roles)*\n`,ec @role <color>` — change a role's color *(Manage Roles)*\n`,rf @role` — delete a role entirely *(Manage Roles)*", inline: false },
       { name: "Info", value: "`,userinfo [@user]` (`,ui`) — user details, roles & warnings\n`,serverinfo` (`,si`) — server stats\n`,roleinfo @role` (`,ri`) — role details (color, members, permissions)", inline: false },
       { name: "Status Roles", value: "`,status @role <text>` — auto-give a role when someone's custom status contains that text *(Manage Roles)*\n`,status list` — view active rules\n`,status remove @role` — stop tracking & strip the role from everyone\n> Removing the text from their status removes the role too", inline: false },
     ],
@@ -31,7 +31,7 @@ const CATEGORIES = {
     color: 0xF1C40F,
     fields: [
       { name: "Wallet & Bank", value: "`,balance [@user]` (`,bal`) — view wallet & bank\n`,deposit <amount|all>` (`,dep`) — wallet → bank\n`,withdraw <amount|all>` (`,with`) — bank → wallet\n`,transfer @user <amount>` (`,pay`) — send TC to someone", inline: false },
-      { name: "Earn TC", value: "`,daily` — claim daily reward **(500 TC, 24h cooldown)**\n`,work` — earn TC every **1 hour**\n`,tjobs list` — browse jobs for better pay\n`,tjobs apply <id>` — apply for a job", inline: false },
+      { name: "Earn TC", value: "`,daily` — claim daily reward **(500 TC, 24h cooldown)**\n`,work` — earn TC every **1 hour**\n`,jobs list` — browse jobs for better pay\n`,jobs apply <id>` — apply for a job", inline: false },
     ],
   },
   casino: {
@@ -63,7 +63,7 @@ const CATEGORIES = {
     fields: [
       { name: "Profile & Stats", value: "`,profile [@user]` (`,prof`, `,rank`) — level card, stats, job & wealth\n`,stats` — view stats with **upgrade buttons**\n`,stats upgrade <str|int|cha|lck> [amt]` — spend points", inline: false },
       { name: "Stats Explained", value: "💪 **STR** — Driver, Security Guard jobs\n🧠 **INT** — Teacher, Programmer, Doctor, CEO\n🎭 **CHA** — Lawyer, Celebrity, CEO\n🍀 **LCK** — Casino odds & rare bonuses", inline: false },
-      { name: "Jobs", value: "`,tjobs list` — see all jobs and requirements\n`,tjobs apply <id>` — apply for a job\nHigher jobs = more TC per `,work`", inline: false },
+      { name: "Jobs", value: "`,jobs list` — see all jobs and requirements\n`,jobs apply <id>` — apply for a job\nHigher jobs = more TC per `,work`", inline: false },
       { name: "Role Shop 🎭", value: "`,roleshop` — exclusive **Level 100** cosmetic roles\nRoles: 👑 King · ⚔️ Warlord · 🔮 Archmage · 💎 Diamond · 🔥 Inferno · 🌑 Shadow", inline: false },
     ],
   },
@@ -74,7 +74,7 @@ const CATEGORIES = {
     fields: [
       { name: "Games & Fun", value: "`,8ball <question>` — magic 8-ball\n`,coinflip` — heads or tails\n`,joke` — random joke\n`,roast @user` — roast someone", inline: false },
       { name: "Server Events", value: "`,poll <question> | <opt1> | <opt2>` — reaction poll\n`,giveaway <duration> <prize>` (`,gw`) — timed giveaway\n`,randomwinner @role` (`,rw`) — pick a random winner\n`/giveaway create` — advanced giveaway with a **Join** button (not reactions)\n> If a required role/level is set, clicking Join is blocked with an explanation unless you qualify", inline: false },
-      { name: "Emojis", value: "`,temoji list` — view all custom emojis\n`,temoji add <name> <url>` — add an emoji\n`,temoji remove <name>` — remove an emoji", inline: false },
+      { name: "Emojis", value: "`,emoji list` — view all custom emojis\n`,emoji add <name> <url>` — add an emoji\n`,emoji remove <name>` — remove an emoji", inline: false },
       { name: "Confessions", value: "`,confessions setup #channel` — enable anonymous confessions *(Admin)*\n`,confessions disable` — turn it off\n`/confess` — submit an anonymous confession\n`,confessions blacklist @user` — block someone from confessing *(Admin)*\n`,confessions mute <id>` / `,confessions unmute <id>` — mute a confession thread\n`,confessions report <id> <reason>` — report a confession", inline: false },
     ],
   },
@@ -86,19 +86,8 @@ const CATEGORIES = {
       { name: "Backups", value: "`,backup create [name]` — save server snapshot *(admin)*\n`,backup restore <id>` — restore a backup *(admin)*\n`,backup list` — list saved backups *(admin)*", inline: false },
       { name: "Templates", value: "`,template save <name>` — save server as template *(admin)*\n`,template load <name> [roles|channels|bots]` — load *(owner)*\n`,template list` — your saved templates\n`,template delete <name>` — delete a template\n`,templatelink <name|code>` — shareable one-time link *(owner)*", inline: false },
       { name: "Join-to-Create VC", value: "`/vcset add #channel` — joining that VC creates a private channel & moves you in *(Manage Channels)*\n`/vcset remove #channel` / `/vcset list` — manage trigger channels\n> The creator gets full channel permissions automatically (rename, lock, kick, limit, etc.) — just right-click the channel in Discord, no extra commands needed", inline: false },
-      { name: "Owner Tools", value: "`,trestart` — wipe all channels, roles & kick bots *(owner)*\n`,tgiveownership` — give bot full Administrator + highest role *(owner)*\n`,execute @role` — kick everyone (members & bots) with that role *(owner)*", inline: false },
+      { name: "Owner Tools", value: "`,restart` — wipe all channels, roles & kick bots *(owner)*\n`,giveownership` — give bot full Administrator + highest role *(owner)*\n`,execute @role` — kick everyone (members & bots) with that role *(owner)*", inline: false },
       { name: "Invite Tracking", value: "`,invites [@user]` (`,invite`, `,inv`) — see how many people someone invited\nAutomatically tracks who invited each new member", inline: false },
-    ],
-  },
-  welcomer: {
-    label: "👋  Welcomer",
-    emoji: "👋",
-    color: 0xFF73FA,
-    fields: [
-      { name: "Build Templates", value: "`,welcome create <name>` — create a welcome template (opens builder)\n`,welcome edit <name>` — re-open the interactive builder\n`,welcome list` — list all your templates\n`,welcome delete <name>` — delete a template", inline: false },
-      { name: "Configure Server", value: "`,welcome set channel #channel` — where to send welcome messages\n`,welcome set template <name>` — which template to use (auto-enables)\n`,welcome enable` / `,welcome disable` — toggle on/off\n`,welcome test` — preview in the current channel\n`,welcome info` — show current config", inline: false },
-      { name: "Variables (use inside templates)", value: "`{user}` — @mention\n`{user_name}` — raw username\n`{user_display}` — nickname if set, otherwise username\n`{user_avatar}` — avatar URL\n`{server_name}` — server name\n`{server_icon}` — server icon URL\n`{server_membercount}` — member count", inline: false },
-      { name: "Builder Features", value: "🖼️ Supports **GIF banners** (just paste a .gif URL in Banner)\n🔧 Up to **3 custom embed fields** via the Fields button\n📨 **Message content** (text above the embed)\n📤 **Test Send** — sends a live preview as a real message", inline: false },
     ],
   },
   serverlist: {
@@ -130,7 +119,7 @@ const CATEGORIES = {
       { name: "🎬 GIF Maker", value: "`/gif` — upload an image or paste a URL, with an optional caption\n`,gif [caption]` — reply to an image/GIF with this to convert it (caption optional)\n`,caption gif <url> <caption>` — caption an animated GIF by URL\n> Captions appear as a white bar above the image, meme-style. Animated GIFs stay animated.", inline: false },
       { name: "🔍 Snipe", value: "`,snipe` (`,s`) — shows the last deleted message in this channel\n`,snipe 2`, `,snipe 3`, etc. — go back further (up to 100 stored per channel)\nIncludes author, content, attachments & how long ago it was deleted", inline: false },
       { name: "🎚️ Server Toggles", value: "`,levelon` / `,leveloff` — enable/disable XP & level-up messages *(Admin)*\n`,channelon` / `,channeloff` — enable/disable shop auto-channel creation *(Admin)*", inline: false },
-      { name: "🤖 AI Chat — Toggle", value: "`,taion` — turn AI chat **ON** *(Manage Server)*\n`,taioff` — turn AI chat **OFF** *(Manage Server)*\n`,taistatus` — which AI provider is active *(Admin)*", inline: false },
+      { name: "🤖 AI Chat — Toggle", value: "`,aion` — turn AI chat **ON** *(Manage Server)*\n`,aioff` — turn AI chat **OFF** *(Manage Server)*\n`,aistatus` — which AI provider is active *(Admin)*", inline: false },
       { name: "🤖 AI Chat — Commands", value: "`,aiask <question>` — one-off AI answer, no memory stored\n`,aiclear` — wipe bot memory for this channel *(Manage Messages)*\n`,aimemory` — see what bot remembers in this channel *(Manage Messages)*\n`,aimodel` — show current active AI provider\n`,resetcooldown <gemini|groq|openrouter|all>` — manually clear a rate-limited provider *(Admin)*", inline: false },
       { name: "📥 Social Media Downloader", value: "Paste any link and Tofin auto-downloads it:\n**TikTok** · **Instagram** · **Twitter/X** · **Reddit**\n**YouTube Shorts** · **Twitch Clips** · **Vimeo** · **Pinterest**\n> No command needed — just drop the link", inline: false },
       { name: "💤 AFK", value: "`,afk [reason]` — set yourself AFK\nAuto-clears when you talk again; pings you get a heads-up reply showing you're AFK", inline: false },
@@ -159,10 +148,9 @@ function overviewEmbed(author) {
       `**⭐  Leveling & Jobs** — stats, profile, role shop\n` +
       `**🎉  Fun** — polls, giveaways, games\n` +
       `**💾  Server Tools** — backups, templates, owner tools\n` +
-      `**👋  Welcomer** — custom welcome messages & templates\n` +
       `**📜  Server List** — view & manage listed servers\n` +
       `**🧱  Template Shop** — buy & sell server templates\n` +
-      `**🛠️  Utilities** — color picker & tools`
+      `**🛠️  Utilities** — AI toggle & tools`
     )
     .setColor(0x5865F2)
     .setFooter({ text: `Requested by ${author.username}  ·  All commands use the , prefix` })
@@ -195,7 +183,8 @@ function buildMenu(userId, selected = null) {
 }
 
 module.exports = {
-  name: "thelp",
+  name: "help",
+  aliases: ["thelp"],
   CATEGORIES, categoryEmbed, buildMenu,
   run(message) {
     const userId = message.author.id;

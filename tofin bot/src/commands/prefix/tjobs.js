@@ -3,7 +3,8 @@ const { success, warn, danger, info, rich } = require("../../util/embed");
 const { colors } = require("../../config");
 
 module.exports = {
-  name: "tjobs",
+  name: "jobs",
+  aliases: ["tjobs"],
   run(message, args) {
     const sub = args[0]?.toLowerCase();
 
@@ -25,14 +26,14 @@ module.exports = {
           title: "💼  Available Jobs",
           description: lines.join("\n\n"),
           color: colors.primary,
-          footer: `Your level: ${u.level} • Use ,tjobs apply <id> to get a job`,
+          footer: `Your level: ${u.level} • Use ,jobs apply <id> to get a job`,
         })],
       });
     }
 
     if (sub === "apply") {
       const jobId = args[1]?.toLowerCase();
-      if (!jobId) return message.reply({ embeds: [warn("Missing Job", "Provide a job ID.\n**Usage:** `,tjobs apply <id>`\nSee job IDs with `,tjobs list`")] });
+      if (!jobId) return message.reply({ embeds: [warn("Missing Job", "Provide a job ID.\n**Usage:** `,jobs apply <id>`\nSee job IDs with `,jobs list`")] });
       const result = applyJob(message.guild.id, message.author.id, jobId);
       if (result.error) return message.reply({ embeds: [danger("Can't Apply", result.error)] });
       return message.reply({
@@ -40,6 +41,6 @@ module.exports = {
       });
     }
 
-    return message.reply({ embeds: [info("Jobs Usage", "`,tjobs list` — view all jobs\n`,tjobs apply <id>` — apply for a job")] });
+    return message.reply({ embeds: [info("Jobs Usage", "`,jobs list` — view all jobs\n`,jobs apply <id>` — apply for a job")] });
   },
 };

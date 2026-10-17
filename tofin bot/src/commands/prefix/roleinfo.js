@@ -1,4 +1,5 @@
 const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { roleFromArgs } = require("../../util/resolve");
 
 const KEY_PERMS = [
   ["Administrator",        "👑 Administrator"],
@@ -20,7 +21,7 @@ module.exports = {
   name: "roleinfo",
   aliases: ["ri", "role-info"],
   async run(message, args) {
-    const role = message.mentions.roles.first()
+    const role = roleFromArgs(message, args)?.role
       ?? message.guild.roles.cache.find((r) => r.name.toLowerCase() === args.join(" ").toLowerCase())
       ?? message.guild.roles.cache.get(args[0]);
 

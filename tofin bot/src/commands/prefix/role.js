@@ -1,181 +1,75 @@
-const { PermissionFlagsBits, PermissionsBitField } = require("discord.js");
-const { success, danger, warn, info } = require("../../util/embed");
-const { EmbedBuilder } = require("discord.js");
+const { PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { danger, warn } = require("../../util/embed");
+const { resolveMember, resolveRole } = require("../../util/resolve");
 
-const VOICE_PERMS = [
-  PermissionFlagsBits.Connect,
-  PermissionFlagsBits.Speak,
-  PermissionFlagsBits.Stream,
-  PermissionFlagsBits.UseVAD,
-  PermissionFlagsBits.PrioritySpeaker,
-  PermissionFlagsBits.MuteMembers,
-  PermissionFlagsBits.DeafenMembers,
-  PermissionFlagsBits.MoveMembers,
-];
-
-// Get ALL permissions (including Administrator, all channel & guild perms)
-const ALL_PERMS = Object.values(PermissionFlagsBits);
-
-const PRESETS = {
-  trialmod_perm: {
-    label: "Trial Mod",
-    color: 0x3498DB,
-    perms: [
-      PermissionFlagsBits.ManageNicknames,
-      PermissionFlagsBits.KickMembers,
-      PermissionFlagsBits.ViewAuditLog,
-      PermissionFlagsBits.ManageRoles,
-      PermissionFlagsBits.ManageMessages,
-      ...VOICE_PERMS,
-    ],
-  },
-  mod_perm: {
-    label: "Mod",
-    color: 0x2ECC71,
-    perms: [
-      PermissionFlagsBits.ManageMessages,
-      PermissionFlagsBits.ManageRoles,
-      PermissionFlagsBits.KickMembers,
-      PermissionFlagsBits.BanMembers,
-      PermissionFlagsBits.ViewAuditLog,
-      PermissionFlagsBits.ManageNicknames,
-      ...VOICE_PERMS,
-    ],
-  },
-  admin_perm: {
-    label: "Admin",
-    color: 0xE67E22,
-    perms: [
-      PermissionFlagsBits.ManageMessages,
-      PermissionFlagsBits.ManageRoles,
-      PermissionFlagsBits.KickMembers,
-      PermissionFlagsBits.BanMembers,
-      PermissionFlagsBits.ViewAuditLog,
-      PermissionFlagsBits.ManageNicknames,
-      PermissionFlagsBits.ManageGuild,
-      PermissionFlagsBits.ManageChannels,
-      PermissionFlagsBits.ManageGuildExpressions,
-      PermissionFlagsBits.ManageWebhooks,
-      ...VOICE_PERMS,
-    ],
-  },
-  coowner_perm: {
-    label: "Co-owner",
-    color: 0x9B59B6,
-    perms: [PermissionFlagsBits.Administrator],
-  },
-  every_perm: {
-    label: "Every Permission",
-    color: 0xFFD700,
-    perms: ALL_PERMS,                  // ← grants every single permission
-    isEveryPerm: true,                 // ← triggers the special message
-  },
-};
-
+// ,role <user> <role>        user: @mention, id or name · role: @mention or name
+// Gives the role, or removes it if they already have it. Typos are fine.
 module.exports = {
   name: "role",
+  aliases: ["r"],
   async run(message, args) {
-    if (message.author.id !== message.guild.ownerId) {
-      return message.reply({
-        embeds: [
-          danger(
-            "Owner Only",
-            "Only the server owner can assign permission presets to roles."
-          ),
-        ],
-      });
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      return message.reply({ embeds: [danger("Missing Permission", "Permission: **Manage Roles**")] });
     }
 
-    const role = message.mentions.roles.first();
-    if (!role) {
-      return message.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🏷️  Role Permission Presets")
-            .setDescription("**Usage:** `,role @role <preset>`")
-            .addFields(
-              {
-                name: "🔵  `trialmod_perm`",
-                value:
-                  "Manage Nicknames, Kick, Audit Log, Manage Roles & Messages, all voice",
-                inline: false,
-              },
-              {
-                name: "🟢  `mod_perm`",
-                value: "Trial Mod + Ban Members",
-                inline: false,
-              },
-              {
-                name: "🟠  `admin_perm`",
-                value:
-                  "Mod + Manage Server, Channels, Emojis, Webhooks",
-                inline: false,
-              },
-              {
-                name: "🟣  `coowner_perm`",
-                value: "Administrator (full server access)",
-                inline: false,
-              },
-              {
-                name: "🟡  `every_perm`",
-                value:
-                  "**Every single permission** – all flags enabled individually",
-                inline: false,
-              }
-            )
-            .setColor(0x5865F2)
-            .setTimestamp(),
-        ],
-      });
+    const usage = warn("Usage", "`,role <user> <role>`\nUser: @mention, ID or just the name.\nRole: @mention or just the name (typos are OK).\nExample: `,role john mod` · `,role @John @Moderator`");
+    if (args.length < 2) return message.reply({ embeds: [usage] });
+
+    // Try every split point so multi-word names work: "big john" "vip members"
+    let best = null;
+    for (let i = 1; i < args.length; i++) {
+      const userText = args.slice(0, i).join(" ");
+      const roleText = args.slice(i).join(" ");
+      const m = await resolveMember(message.guild, userText);
+      if (!m) continue;
+      const r = resolveRole(message.guild, roleText);
+      if (!r) continue;
+      const total = (m.score ?? 100) + (r.score ?? 100);
+      if (!best || total > best.total) best = { m, r, total, userText, roleText };
     }
 
-    const presetKey = args[1]?.toLowerCase();
-    const preset = PRESETS[presetKey];
-
-    if (!preset) {
-      return message.reply({
-        embeds: [
-          warn(
-            "Unknown Preset",
-            `No preset \`${presetKey}\`.\n\n` +
-              "Available: `trialmod_perm` · `mod_perm` · `admin_perm` · `coowner_perm` · `every_perm`"
-          ),
-        ],
-      });
+    if (!best) {
+      const firstUser = await resolveMember(message.guild, args[0]);
+      const msg = firstUser
+        ? `I found **${firstUser.member.displayName}** but no role matching \`${args.slice(1).join(" ")}\`.`
+        : `I couldn't find a member matching \`${args[0]}\`.`;
+      return message.reply({ embeds: [warn("Not Found", msg)] });
     }
 
+    const { member: target, guessed: userGuessed } = best.m;
+    const { role, guessed: roleGuessed } = best.r;
+    const me = message.guild.members.me;
+
+    if (role.managed) return message.reply({ embeds: [danger("Managed Role", "That role is managed by an integration and can't be assigned.")] });
+    if (role.position >= me.roles.highest.position) {
+      return message.reply({ embeds: [danger("Role Too High", "That role is above or equal to my highest role. I can't assign it.")] });
+    }
+    if (message.author.id !== message.guild.ownerId && role.position >= message.member.roles.highest.position) {
+      return message.reply({ embeds: [danger("Role Too High", "You can only manage roles below your own highest role.")] });
+    }
+
+    const had = target.roles.cache.has(role.id);
     try {
-      await role.setPermissions(
-        new PermissionsBitField(preset.perms),
-        `${preset.label} preset applied by ${message.author.tag}`
-      );
-
-      return message.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("✅  Role Updated")
-            .setDescription(
-              `**${role}** has been given the **${preset.label}** preset.\n\n` +
-                (preset.isEveryPerm
-                  ? `> 🟡  **All permissions** granted — this role now has every possible permission (including Administrator).`
-                  : `> ✦  Permissions applied successfully.`)
-            )
-            .setColor(preset.color)
-            .setTimestamp(),
-        ],
-      });
+      if (had) await target.roles.remove(role, `by ${message.author.tag}`);
+      else await target.roles.add(role, `by ${message.author.tag}`);
     } catch (e) {
-      if (e.code === 50013) {
-        return message.reply({
-          embeds: [
-            danger(
-              "Bot Missing Permission",
-              "I need **Manage Roles** and my role must be **above** the target role in the role list."
-            ),
-          ],
-        });
-      }
+      if (e.code === 50013) return message.reply({ embeds: [danger("Missing Access", "I can't change roles for that member (their top role may be above mine).")] });
       throw e;
     }
+
+    const guesses = [];
+    if (userGuessed) guesses.push(`member **${target.displayName}** (you typed "${best.userText}")`);
+    if (roleGuessed) guesses.push(`role **${role.name}** (you typed "${best.roleText}")`);
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(had ? 0xed4245 : 0x57f287)
+          .setTitle(had ? "✅  Role Removed" : "✅  Role Given")
+          .setDescription(`**${role.name}** ${had ? "removed from" : "given to"} ${target}.` + (guesses.length ? `\n> 🔎 Guessed ${guesses.join(" and ")}.` : ""))
+          .setFooter({ text: `Done by ${message.author.tag}` }),
+      ],
+      allowedMentions: { parse: [] },
+    });
   },
 };

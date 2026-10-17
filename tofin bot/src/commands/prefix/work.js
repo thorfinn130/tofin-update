@@ -45,7 +45,7 @@ module.exports = {
             `> ⏰  Next shift available in **1 hour**`
           )
           .setColor(0x57F287)
-          .setFooter({ text: "Change jobs: ,tjobs  ·  Upgrade stats: ,stats" })
+          .setFooter({ text: "Change jobs: ,jobs  ·  Upgrade stats: ,stats" })
           .setTimestamp(),
       ] });
     }
@@ -58,11 +58,11 @@ module.exports = {
         .setDescription(
           `> ${result.msg} and earned **${fmt(result.amount)} TC**\n` +
           `> 💳  Wallet: **${fmt(result.u.wallet)} TC**\n\n` +
-          `> 🧑‍💼  Get a job for better pay: \`,tjobs list\`\n` +
+          `> 🧑‍💼  Get a job for better pay: \`,jobs list\`\n` +
           `> ⏰  Next shift available in **1 hour**`
         )
         .setColor(0x57F287)
-        .setFooter({ text: "Get a job with ,tjobs list to earn more TC" })
+        .setFooter({ text: "Get a job with ,jobs list to earn more TC" })
         .setTimestamp(),
     ] });
   },

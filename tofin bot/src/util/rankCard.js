@@ -212,7 +212,7 @@ async function generateRankCard({ username, avatarURL, level, xp, xpNeeded, stat
   } else {
     ctx.font = "13px sans-serif";
     ctx.fillStyle = "#666";
-    ctx.fillText("💼  No job — use ,tjobs list to find one", LEFT, JOB_Y);
+    ctx.fillText("💼  No job — use ,jobs list to find one", LEFT, JOB_Y);
   }
   ctx.textAlign = "right";
   ctx.font = "13px sans-serif";

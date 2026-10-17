@@ -1,4 +1,5 @@
 const { rich } = require("../../util/embed");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getWarnings } = require("../../services/moderation");
 const { colors } = require("../../config");
 
@@ -6,7 +7,7 @@ module.exports = {
   name: "userinfo",
   aliases: ["ui"],
   async run(message, args) {
-    const user = message.mentions.users.first() ?? message.author;
+    const user = (args[0] ? (await memberFromArgs(message, args, 0))?.user : null) ?? message.author;
     const member = message.guild.members.cache.get(user.id);
     const warnings = getWarnings(message.guild.id, user.id);
 

@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getConfig, setConfig, getActiveJail, setActiveJail, clearActiveJail } = require("../../services/jail");
 const { success, danger, warn, info, rich } = require("../../util/embed");
 const { parseDuration, formatDuration } = require("../../util/time");
@@ -57,7 +58,7 @@ module.exports = {
     }
 
     // ,jail @user [duration] [reason] — the main action
-    const target = message.mentions.members.first();
+    const target = (await memberFromArgs(message, args, 0))?.member;
     if (!target) {
       return message.reply({
         embeds: [warn(

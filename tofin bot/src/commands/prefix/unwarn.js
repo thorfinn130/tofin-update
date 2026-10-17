@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { removeWarning, getWarnings } = require("../../services/moderation");
 const { success, danger, warn, info } = require("../../util/embed");
 
@@ -8,7 +9,7 @@ module.exports = {
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Moderate Members)")] });
     }
-    const user = message.mentions.users.first();
+    const user = (await memberFromArgs(message, args, 0))?.user;
     if (!user) {
       return message.reply({ embeds: [warn("Missing User", "You need to mention a user.\n**Usage:** `,unwarn @user <warning#>`\n> Use `,warnings @user` to see warning numbers.")] });
     }

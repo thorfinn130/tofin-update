@@ -3,6 +3,7 @@ const {
   makeStaticGif, makeCaptionedAnimatedGif, makeGifFromVideo,
   isGifBuffer, isVideoBuffer, fetchBuffer, parseTimeToSeconds,
 } = require("../../util/gifMaker");
+const { uploadLimit } = require("../../util/media");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -51,14 +52,15 @@ module.exports = {
 
     await interaction.deferReply();
 
+    const limit = uploadLimit(interaction.guild);
     try {
       const buf = await fetchBuffer(sourceUrl);
 
       let outBuf;
       if (isVideoBuffer(buf)) {
-        outBuf = await makeGifFromVideo(sourceUrl, caption, startSeconds, endSeconds);
+        outBuf = await makeGifFromVideo(sourceUrl, caption, startSeconds, endSeconds, limit);
       } else if (isGifBuffer(buf)) {
-        outBuf = await makeCaptionedAnimatedGif(sourceUrl, caption);
+        outBuf = await makeCaptionedAnimatedGif(sourceUrl, caption, limit);
       } else {
         outBuf = await makeStaticGif(sourceUrl, caption);
       }
@@ -67,7 +69,10 @@ module.exports = {
       return interaction.editReply({ files: [file] });
     } catch (err) {
       console.error("[/gif]", err);
-      return interaction.editReply({ content: "❌ Couldn't process that. Make sure the link/upload is a valid image, GIF, or video." });
+      if (err.message === "GIF_TOO_LARGE") {
+        return interaction.editReply({ content: "❌ That clip is too long to fit in a GIF. Use the `start` and `end` options to trim it." });
+      }
+            return interaction.editReply({ content: "❌ Couldn't process that. Make sure the link/upload is a valid image, GIF, or video." });
     }
   },
 };

@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getUser, getLeaderboard } = require("../../services/messageTracker");
 const { bar } = require("../../util/embed");
 
@@ -50,7 +51,7 @@ module.exports = {
     }
 
     // ,messages [@user]
-    const user   = message.mentions.users.first() ?? message.author;
+    const user   = (args[0] ? (await memberFromArgs(message, args, 0))?.user : null) ?? message.author;
     const member = message.guild.members.cache.get(user.id);
     const data   = getUser(message.guild.id, user.id);
 

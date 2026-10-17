@@ -2,16 +2,19 @@ const { PermissionFlagsBits } = require("discord.js");
 const { parseDuration, formatDuration } = require("../../util/time");
 const { tempBan } = require("../../services/moderation");
 const { success, danger, warn } = require("../../util/embed");
+const { memberFromArgs, roleFromArgs, resolveMember } = require("../../util/resolve");
+
 
 module.exports = {
-  name: "tban",
+  name: "ban",
+  aliases: ["tban"],
   async run(message, args) {
     if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Ban Members)")] });
     }
 
     if (!args.length) {
-      return message.reply({ embeds: [warn("Missing User", "**Usage:** `,tban <user(s)> [duration] [reason]`\n**Examples:**\n`,tban @John 1d breaking rules`\n`,tban 123456789012345678 2h spam`\n`,tban @John 123456789012345678 1d`")] });
+      return message.reply({ embeds: [warn("Missing User", "**Usage:** `,ban <user(s)> [duration] [reason]`\n**Examples:**\n`,ban @John 1d breaking rules`\n`,ban 123456789012345678 2h spam`\n`,ban @John 123456789012345678 1d`")] });
     }
 
     // ── Parse users (mentions or IDs) ──
@@ -32,7 +35,12 @@ module.exports = {
         i++;
         continue;
       }
-      // If it's not a user, stop and treat the rest as duration + reason
+      // First word that isn't a mention/ID: maybe a name (typos are fine)
+      if (userIds.length === 0 && !parseDuration(arg)) {
+        const found = await resolveMember(message.guild, arg);
+        if (found) { userIds.push(found.member.id); i++; continue; }
+      }
+      // Otherwise stop and treat the rest as duration + reason
       break;
     }
 
