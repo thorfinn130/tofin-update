@@ -1,16 +1,17 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { success, danger, warn } = require("../../util/embed");
 
 module.exports = {
-  name: "tnickname",
-  aliases: ["tnick"],
+  name: "nickname",
+  aliases: ["tnickname", "tnick"],
   async run(message, args) {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageNicknames)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Manage Nicknames)")] });
     }
-    const member = message.mentions.members.first();
+    const member = (await memberFromArgs(message, args, 0))?.member;
     if (!member) {
-      return message.reply({ embeds: [warn("Missing User", "You need to mention a user.\n**Usage:** `,tnickname @user <new nickname>`\n**Example:** `,tnickname @John CoolName`\n> Leave out the nickname to reset it.")] });
+      return message.reply({ embeds: [warn("Missing User", "You need to mention a user.\n**Usage:** `,nickname @user <new nickname>`\n**Example:** `,nickname @John CoolName`\n> Leave out the nickname to reset it.")] });
     }
     const nickname = args.slice(1).join(" ") || null;
     try {

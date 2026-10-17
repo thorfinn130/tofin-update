@@ -1,15 +1,17 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const { extractTwitterUrl, fetchTwitterResult } = require("../../services/twitter");
 const { saveGif } = require("../../services/gifMemory");
+const { uploadLimit } = require("../../util/media");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("twitter")
-    .setDescription("Download a Twitter/X post's media")
+    .setDescription("Download a Twitter/X post's video")
     .addStringOption((opt) =>
-      opt.setName("url").setDescription("The Tweet link").setRequired(true)
+      opt.setName("url").setDescription("The tweet link").setRequired(true)
     )
-    .setDMPermission(true), // ✅ Allow in DMs
+    .setContexts(0, 1, 2)
+    .setIntegrationTypes(0, 1),
 
   async run(interaction) {
     const input = interaction.options.getString("url");
@@ -18,26 +20,23 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const result = await fetchTwitterResult(url);
+      const result = await fetchTwitterResult(url, uploadLimit(interaction.guild));
 
-      // Only save GIF if we're in a guild (DMs have no guild)
       if (result.isGif && result.mediaUrl && interaction.guild) {
         saveGif(interaction.guild.id, result.mediaUrl);
       }
 
-      if (result.buffer) {
-        const file = new AttachmentBuilder(result.buffer, { name: result.fileName });
-        return interaction.editReply({ embeds: [result.embed], files: [file] });
-      }
+      const files = result.files
+        ? result.files.map((f) => new AttachmentBuilder(f.buffer, { name: f.fileName }))
+        : result.buffer
+          ? [new AttachmentBuilder(result.buffer, { name: result.fileName })]
+          : [];
 
-      if (result.link) {
-        return interaction.editReply({ content: `📁 File too large. View it here: ${result.link}`, embeds: [result.embed] });
-      }
-
-      return interaction.editReply({ embeds: [result.embed] });
+      if (files.length) return interaction.editReply({ files });
+      return interaction.editReply({ content: result.link });
     } catch (err) {
       console.error("[/twitter]", err.message);
-      return interaction.editReply({ content: `🐦 Couldn't fetch media. View it here: ${url}` });
+      return interaction.editReply({ content: "❌ Couldn't fetch that. Check the link and try again." });
     }
   },
 };

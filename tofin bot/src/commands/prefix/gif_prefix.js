@@ -3,6 +3,7 @@ const {
   makeStaticGif, makeCaptionedAnimatedGif, makeGifFromVideo,
   isGifBuffer, isVideoBuffer, fetchBuffer, parseTimeToSeconds,
 } = require("../../util/gifMaker");
+const { uploadLimit } = require("../../util/media");
 
 module.exports = {
   name: "gif",
@@ -59,14 +60,15 @@ module.exports = {
 
     await message.channel.sendTyping().catch(() => {});
 
+    const limit = uploadLimit(message.guild);
     try {
       const buf = await fetchBuffer(sourceUrl);
 
       let outBuf;
       if (isVideoBuffer(buf)) {
-        outBuf = await makeGifFromVideo(sourceUrl, caption, startSeconds, endSeconds);
+        outBuf = await makeGifFromVideo(sourceUrl, caption, startSeconds, endSeconds, limit);
       } else if (isGifBuffer(buf)) {
-        outBuf = await makeCaptionedAnimatedGif(sourceUrl, caption);
+        outBuf = await makeCaptionedAnimatedGif(sourceUrl, caption, limit);
       } else {
         outBuf = await makeStaticGif(sourceUrl, caption);
       }
@@ -76,7 +78,10 @@ module.exports = {
       return message.reply({ files: [file] });
     } catch (err) {
       console.error("[,gif]", err);
-      return message.reply({ content: "❌ Couldn't process that. Make sure it's a valid image, GIF, or video." });
+      if (err.message === "GIF_TOO_LARGE") {
+        return message.reply({ content: "❌ That clip is too long to fit in a GIF. Trim it: `,gif <url> <start> <end>`." });
+      }
+            return message.reply({ content: "❌ Couldn't process that. Make sure it's a valid image, GIF, or video." });
     }
   },
 };

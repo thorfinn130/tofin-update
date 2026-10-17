@@ -1,4 +1,5 @@
 const { info, warn } = require("../../util/embed");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const roasts = [
   "You bring everyone so much joy… when you leave the room.",
   "You're proof that even evolution takes breaks.",
@@ -6,8 +7,8 @@ const roasts = [
 ];
 module.exports = {
   name: "roast",
-  run(message) {
-    const user = message.mentions.users.first();
+  async run(message, args) {
+    const user = (await memberFromArgs(message, args, 0))?.user;
     if (!user) {
       return message.reply({ embeds: [warn("Missing User", "You need to mention someone to roast!\n**Usage:** `,roast @user`\n**Example:** `,roast @John`")] });
     }

@@ -1,15 +1,9 @@
 const https = require("https");
 const http = require("http");
-const { EmbedBuilder } = require("discord.js");
 const { saveGif } = require("./gifMemory");
-
-// ── Replace with your custom emoji IDs ──
-const PINTEREST_EMOJI = "<:pinterest:1519108054208221226>";
-const LIKES_EMOJI = "<:likes:1519108050848448595>";   // optional
-const COMMENTS_EMOJI = "<:comments:1519108047182499994>"; // optional
+const { download, uploadLimit, fitVideo } = require("../util/media");
 
 const PINTEREST_REGEX = /https?:\/\/(?:[^\s\/]+\.)?pinterest\.com\/(?:pin|video)\/[0-9]+\/?|https?:\/\/pin\.it\/[a-zA-Z0-9]+/i;
-const MAX_BYTES = 25 * 1024 * 1024;
 const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 function extractPinterestUrl(text) {
@@ -160,260 +154,66 @@ function extractMediaFromHtml(html) {
   return null;
 }
 
-function downloadBuffer(url, redirects = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirects > 5) return reject(new Error("too many redirects"));
-    const proto = url.startsWith("https") ? https : http;
-    const request = proto.get(url, { headers: { "User-Agent": BROWSER_UA } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400) {
-        const location = res.headers.location;
-        if (!location) return reject(new Error("Redirect without location"));
-        const nextUrl = location.startsWith("/") ? new URL(location, url).href : location;
-        res.resume();
-        return downloadBuffer(nextUrl, redirects + 1).then(resolve).catch(reject);
-      }
-      const chunks = [];
-      let totalSize = 0;
-      res.on("data", c => {
-        totalSize += c.length;
-        if (totalSize > MAX_BYTES) { res.destroy(); reject(new Error("File too large")); }
-        chunks.push(c);
-      });
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-    }).on("error", reject);
-    request.setTimeout(30000, () => { request.destroy(); reject(new Error("Download timeout")); });
-  });
-}
-
-async function handlePinterest(message) {
-  let url = extractPinterestUrl(message.content);
-  if (!url) return false;
-
-  try {
-    await message.channel.sendTyping();
-
-    url = await resolveRedirect(url);
-
-    if (!url.includes("pinterest.com/pin/") && !url.includes("pinterest.com/video/")) {
-      await message.reply({
-        content: `📌 **Pinterest Link**\nView it here: ${url}`,
-        embeds: [new EmbedBuilder().setColor(0xE60023).setTitle("View Pin").setURL(url).setTimestamp()]
-      });
-      message.suppressEmbeds(true).catch(() => {});
-      return true;
-    }
-
-    let mediaUrl = null;
-    let mediaType = "image";
-    let isGif = false;
-
-    // ── Get oEmbed data ──
-    let oembed = null;
-    try {
-      oembed = await fetchOEmbed(url);
-    } catch (e) {}
-
-    // ── Fetch HTML for extra metadata and media ──
-    let html = null;
-    let metadata = { authorName: null, authorAvatar: null, description: null, likes: null, comments: null };
-    try {
-      html = await fetchPageHtml(url);
-      metadata = extractMetadataFromHtml(html);
-      const media = extractMediaFromHtml(html);
-      if (media) {
-        mediaUrl = media.url;
-        mediaType = media.type;
-        isGif = mediaType === "gif";
-      }
-    } catch (e) {}
-
-    // ── If no media from HTML, fallback to oEmbed ──
-    if (!mediaUrl && oembed && oembed.url) {
-      mediaUrl = oembed.url;
-      mediaType = "image";
-      isGif = mediaUrl.includes(".gif") || mediaUrl.includes("gif");
-      if (oembed.type === "video" && oembed.html) {
-        const videoMatch = oembed.html.match(/src="([^"]+\.mp4[^"]*)"/i);
-        if (videoMatch) {
-          mediaUrl = videoMatch[1];
-          mediaType = "video";
-        }
-      }
-    }
-
-    // ── If still no media, send link ──
-    if (!mediaUrl) {
-      await message.reply({
-        content: `📌 **Pinterest Pin**\nView it here: ${url}`,
-        embeds: [new EmbedBuilder().setColor(0xE60023).setTitle("View Pin").setURL(url).setTimestamp()]
-      });
-      message.suppressEmbeds(true).catch(() => {});
-      return true;
-    }
-
-    // Clean URL
-    mediaUrl = mediaUrl.replace(/\\/g, "").replace(/&amp;/g, "&");
-
-    // Determine file name
-    let fileName = "pinterest.jpg";
-    if (mediaType === "video" || mediaUrl.includes(".mp4")) fileName = "pinterest.mp4";
-    else if (isGif || mediaUrl.includes(".gif")) fileName = "pinterest.gif";
-    else if (mediaUrl.includes(".png")) fileName = "pinterest.png";
-    else if (mediaUrl.includes(".webp")) fileName = "pinterest.webp";
-
-    // Save GIF if applicable
-    if (isGif) saveGif(message.guild.id, mediaUrl);
-
-    // ── Build rich embed ──
-    const embed = new EmbedBuilder()
-      .setColor(0xE60023)
-      .setTitle(`${PINTEREST_EMOJI} View Original Pin`)
-      .setURL(url)
-      .setDescription(metadata.description || (isGif ? "🔄 Animated GIF" : mediaType === "video" ? "🎬 Pinterest Video" : "🖼️ Pinterest Image"))
-      .setFooter({ text: "Pinterest" })
-      .setTimestamp();
-
-    // Add author info if available
-    if (metadata.authorName) {
-      embed.setAuthor({
-        name: metadata.authorName,
-        iconURL: metadata.authorAvatar || null,
-      });
-    } else if (oembed && oembed.author_name) {
-      embed.setAuthor({
-        name: oembed.author_name,
-        iconURL: null,
-      });
-    }
-
-    // Add thumbnail (the main image) if not already embedded as file – we'll use the media itself as the main image
-    // But we can set the thumbnail to the media URL if it's an image (not a video/gif)
-    if (mediaType === "image" && !isGif) {
-      embed.setImage(mediaUrl);
-    } else if (mediaType === "video" && oembed && oembed.thumbnail_url) {
-      embed.setThumbnail(oembed.thumbnail_url);
-    } else if (oembed && oembed.thumbnail_url) {
-      embed.setThumbnail(oembed.thumbnail_url);
-    }
-
-    // ── Add likes/comments if available ──
-    const fields = [];
-    if (metadata.likes !== null) {
-      fields.push({ name: `${LIKES_EMOJI || '❤️'} Likes`, value: metadata.likes.toLocaleString(), inline: true });
-    }
-    if (metadata.comments !== null) {
-      fields.push({ name: `${COMMENTS_EMOJI || '💬'} Comments`, value: metadata.comments.toLocaleString(), inline: true });
-    }
-    if (fields.length > 0) {
-      embed.addFields(fields);
-    }
-
-    // ── Download media ──
-    const buffer = await downloadBuffer(mediaUrl);
-
-    if (buffer.length > MAX_BYTES) {
-      await message.reply({
-        content: `📌 **Pinterest ${mediaType === 'video' ? 'Video' : 'Media'}**\nFile too large to upload. View it here: ${mediaUrl}`,
-        embeds: [embed]
-      });
-    } else {
-      await message.reply({
-        embeds: [embed],
-        files: [{ attachment: buffer, name: fileName }],
-      });
-    }
-
-    message.suppressEmbeds(true).catch(() => {});
-    return true;
-
-  } catch (err) {
-    console.error("[pinterest]", err.message);
-    try {
-      await message.reply({
-        content: `📌 **Pinterest Link**\nCouldn't fetch media directly. View it here: ${url}`,
-        embeds: [new EmbedBuilder().setColor(0xE60023).setTitle("View Pin").setURL(url).setTimestamp()]
-      });
-    } catch (e) {}
-    return false;
-  }
-}
-
-// ── Slash-command-friendly version (works without a message object) ──
-async function fetchPinterestResult(rawUrl) {
-  let url = await resolveRedirect(rawUrl);
-
+// Resolve a pin link into media. Returns { buffer, fileName, isGif, mediaUrl } or { link }.
+async function fetchPinterestResult(rawUrl, limit = uploadLimit(null)) {
+  const url = await resolveRedirect(rawUrl);
   if (!url.includes("pinterest.com/pin/") && !url.includes("pinterest.com/video/")) {
-    return { embed: new EmbedBuilder().setColor(0xE60023).setTitle("View Pin").setURL(url).setTimestamp(), link: url };
+    return { link: url };
   }
 
   let mediaUrl = null;
   let mediaType = "image";
-  let isGif = false;
 
-  let oembed = null;
-  try { oembed = await fetchOEmbed(url); } catch (e) {}
-
-  let metadata = { authorName: null, authorAvatar: null, description: null, likes: null, comments: null };
   try {
-    const html = await fetchPageHtml(url);
-    metadata = extractMetadataFromHtml(html);
-    const media = extractMediaFromHtml(html);
-    if (media) { mediaUrl = media.url; mediaType = media.type; isGif = mediaType === "gif"; }
-  } catch (e) {}
-
-  if (!mediaUrl && oembed && oembed.url) {
-    mediaUrl = oembed.url;
-    mediaType = "image";
-    isGif = mediaUrl.includes(".gif") || mediaUrl.includes("gif");
-    if (oembed.type === "video" && oembed.html) {
-      const videoMatch = oembed.html.match(/src="([^"]+\.mp4[^"]*)"/i);
-      if (videoMatch) { mediaUrl = videoMatch[1]; mediaType = "video"; }
-    }
-  }
+    const media = extractMediaFromHtml(await fetchPageHtml(url));
+    if (media) { mediaUrl = media.url; mediaType = media.type; }
+  } catch {}
 
   if (!mediaUrl) {
-    return { embed: new EmbedBuilder().setColor(0xE60023).setTitle("View Pin").setURL(url).setTimestamp(), link: url };
+    try {
+      const oembed = await fetchOEmbed(url);
+      if (oembed?.url) mediaUrl = oembed.url;
+    } catch {}
   }
+  if (!mediaUrl) return { link: url };
 
   mediaUrl = mediaUrl.replace(/\\/g, "").replace(/&amp;/g, "&");
+  const isGif = mediaType === "gif" || /\.gif/i.test(mediaUrl);
+  const isVideo = mediaType === "video" || /\.mp4/i.test(mediaUrl);
 
-  let fileName = "pinterest.jpg";
-  if (mediaType === "video" || mediaUrl.includes(".mp4")) fileName = "pinterest.mp4";
-  else if (isGif || mediaUrl.includes(".gif")) fileName = "pinterest.gif";
-  else if (mediaUrl.includes(".png")) fileName = "pinterest.png";
-  else if (mediaUrl.includes(".webp")) fileName = "pinterest.webp";
-
-  const embed = new EmbedBuilder()
-    .setColor(0xE60023)
-    .setTitle(`${PINTEREST_EMOJI} View Original Pin`)
-    .setURL(url)
-    .setDescription(metadata.description || (isGif ? "🔄 Animated GIF" : mediaType === "video" ? "🎬 Pinterest Video" : "🖼️ Pinterest Image"))
-    .setFooter({ text: "Pinterest" })
-    .setTimestamp();
-
-  if (metadata.authorName) {
-    embed.setAuthor({ name: metadata.authorName, iconURL: metadata.authorAvatar || null });
-  } else if (oembed && oembed.author_name) {
-    embed.setAuthor({ name: oembed.author_name, iconURL: null });
+  let buffer = await download(mediaUrl);
+  if (isVideo) {
+    buffer = await fitVideo(buffer, limit);
+    if (!buffer) return { link: mediaUrl, isGif, mediaUrl };
+  } else if (buffer.length > limit) {
+    return { link: mediaUrl, isGif, mediaUrl };
   }
 
-  if (mediaType === "image" && !isGif) {
-    embed.setImage(mediaUrl);
-  } else if (oembed && oembed.thumbnail_url) {
-    embed.setThumbnail(oembed.thumbnail_url);
+  const ext = isVideo ? "mp4" : isGif ? "gif" : (mediaUrl.match(/\.(png|webp)/i)?.[1] || "jpg").toLowerCase();
+  return { buffer, fileName: `pinterest.${ext}`, isGif, mediaUrl };
+}
+
+async function handlePinterest(message) {
+  const found = extractPinterestUrl(message.content);
+  if (!found) return false;
+
+  try {
+    await message.channel.sendTyping();
+    const result = await fetchPinterestResult(found, uploadLimit(message.guild));
+
+    if (result.isGif && result.mediaUrl && message.guild) saveGif(message.guild.id, result.mediaUrl);
+
+    await message.reply({
+      files: result.buffer ? [{ attachment: result.buffer, name: result.fileName }] : [],
+      content: result.buffer ? undefined : result.link,
+      allowedMentions: { repliedUser: false },
+    });
+    message.suppressEmbeds(true).catch(() => {});
+    return true;
+  } catch (err) {
+    console.error("[pinterest]", err.message);
+    return false;
   }
-
-  const fields = [];
-  if (metadata.likes !== null) fields.push({ name: `${LIKES_EMOJI || '❤️'} Likes`, value: metadata.likes.toLocaleString(), inline: true });
-  if (metadata.comments !== null) fields.push({ name: `${COMMENTS_EMOJI || '💬'} Comments`, value: metadata.comments.toLocaleString(), inline: true });
-  if (fields.length) embed.addFields(fields);
-
-  const buffer = await downloadBuffer(mediaUrl);
-  if (buffer.length > MAX_BYTES) {
-    return { embed, link: mediaUrl, isGif };
-  }
-
-  return { embed, buffer, fileName, isGif, mediaUrl };
 }
 
 module.exports = { handlePinterest, extractPinterestUrl, fetchPinterestResult };

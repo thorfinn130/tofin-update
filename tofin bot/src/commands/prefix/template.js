@@ -1,5 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
-const { saveTemplate, loadTemplate, addToServer, listTemplates, deleteTemplate, parseModeAndName, MODES } = require("../../services/template");
+const { saveTemplate, loadTemplate, findTemplate, addToServer, listTemplates, deleteTemplate, parseModeAndName, MODES } = require("../../services/template");
 const { success, info, danger, warn } = require("../../util/embed");
 
 const isOwner = (message) => message.author.id === message.guild.ownerId;
@@ -43,7 +43,7 @@ module.exports = {
       }
       const list = listTemplates(message.author.id);
       const desc = list.length
-        ? list.map((t) => `• **${t.name}** — saved <t:${Math.floor(t.createdAt / 1000)}:R>`).join("\n")
+        ? list.map((t) => `• **${t.name}** — ${t.roles?.length ?? 0} roles · ${t.channels?.length ?? 0} channels · ${t.emojis?.length ?? 0} emojis · ${t.stickers?.length ?? 0} stickers — saved <t:${Math.floor(t.createdAt / 1000)}:R>`).join("\n")
         : "_No templates saved yet. Use `,template save <name>` to save one._";
       return message.reply({ embeds: [info("🧱 Your Templates", desc)] });
     }
@@ -55,8 +55,23 @@ module.exports = {
       const name = args.slice(1).join(" ");
       if (!name) return message.reply({ embeds: [warn("Missing Name", "Provide a template name.\n**Usage:** `,template delete <name>`")] });
       const deleted = deleteTemplate(message.author.id, name);
-      if (!deleted) return message.reply({ embeds: [danger("Not Found", `No template named **${name}** found in your account.`)] });
+      if (!deleted) {
+        const near = findTemplate(message.author.id, name);
+        return message.reply({ embeds: [danger("Not Found", `No template named **${name}** found in your account.` + (near ? `\nDid you mean **${near.name}**? Run \`,template delete ${near.name}\` to confirm.` : ""))] });
+      }
       return message.reply({ embeds: [success("Deleted!", `Template **${name}** has been permanently deleted.`)] });
+    }
+
+    if (sub === "info") {
+      if (!isAdmin(message)) {
+        return message.reply({ embeds: [danger("Missing Permission", "Permission: (Administrator)")] });
+      }
+      const name = args.slice(1).join(" ");
+      const found = name ? findTemplate(message.author.id, name) : null;
+      if (!found) return message.reply({ embeds: [danger("Not Found", name ? `No template like **${name}** in your account.` : "**Usage:** `,template info <name>`")] });
+      const t = found.tpl;
+      return message.reply({ embeds: [info(`🧱 ${found.name}`,
+        `**Roles:** ${t.roles?.length ?? 0}\n**Channels:** ${t.channels?.length ?? 0}\n**Bot roles:** ${t.botRoles?.length ?? 0}\n**Emojis:** ${t.emojis?.length ?? 0}\n**Stickers:** ${t.stickers?.length ?? 0}\nSaved <t:${Math.floor(t.createdAt / 1000)}:R>` + (found.guessed ? `\n> 🔎 Matched from "${name}".` : ""))] });
     }
 
     // load — owner only (destructive: wipes and replaces the chosen categories)
@@ -72,12 +87,14 @@ module.exports = {
       if (!name) {
         return message.reply({ embeds: [warn("Missing Name", "Provide a template name.\n**Usage:** `,template load <name> [roles,channels,bots,emojis,stickers]`")] });
       }
+      const matched = findTemplate(message.author.id, name);
+      if (!matched) return message.reply({ embeds: [danger("Not Found", `No template like **${name}** in your account. Use \`,template list\`.`)] });
       const modeLabel = modes.includes("full")
         ? "everything (roles, channels, bots, emojis & stickers)"
         : modes.map((m) => LABELS[m] ?? m).join(", ");
 
       await message.reply({
-        embeds: [info(`🔨 Building from template **${name}**…`, `Loading: **${modeLabel}**\nThis replaces existing items in those categories. You'll get a DM when it's done.`)],
+        embeds: [info(`🔨 Building from template **${matched.name}**…`, `Loading: **${modeLabel}**\nThis replaces existing items in those categories. You'll get a DM when it's done.`)],
       });
       try {
         await loadTemplate(message.guild, message.author.id, name, modes, message.author);
@@ -134,6 +151,7 @@ module.exports = {
       embeds: [info("Template Usage",
         "`,template save <name>` — save this server as a template (roles, channels, bots, emojis, stickers) *(Admin+)*\n" +
         "`,template list` — view your saved templates *(Admin+)*\n" +
+        "`,template info <name>` — see what's inside a template *(Admin+)*\n" +
         "`,template delete <name>` — permanently delete a saved template *(Admin+)*\n" +
         "`,template load <name>` — load everything, replacing existing *(Owner only)*\n" +
         "`,template load <name> roles` — replace roles only *(Owner only)*\n" +

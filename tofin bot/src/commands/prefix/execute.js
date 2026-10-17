@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { success, danger, warn, info } = require("../../util/embed");
 
 module.exports = {
@@ -8,7 +9,7 @@ module.exports = {
       return message.reply({ embeds: [danger("Owner Only", "Only the **server owner** can use this command.")] });
     }
 
-    const role = message.mentions.roles.first();
+    const role = roleFromArgs(message, args)?.role;
     if (!role) {
       return message.reply({ embeds: [warn("Missing Role", "You need to mention a role.\n**Usage:** `,execute @role`\n**Example:** `,execute @Spammer`")] });
     }

@@ -1,4 +1,5 @@
 const { getUser, xpNeeded, getJob } = require("../../services/leveling");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getUser: getEcoUser } = require("../../services/economy");
 const { generateRankCard } = require("../../util/rankCard");
 const { danger } = require("../../util/embed");
@@ -8,7 +9,7 @@ module.exports = {
   name: "profile",
   aliases: ["prof", "rank"],
   async run(message, args) {
-    const user = message.mentions.users.first() ?? message.author;
+    const user = (args[0] ? (await memberFromArgs(message, args, 0))?.user : null) ?? message.author;
     const lv = getUser(message.guild.id, user.id);
     const eco = getEcoUser(user.id);
     const job = lv.job ? getJob(lv.job) : null;

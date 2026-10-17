@@ -1,4 +1,5 @@
 const { getUser, fmt } = require("../../services/economy");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { EmbedBuilder } = require("discord.js");
 
 function bar(value, max, size = 14) {
@@ -11,8 +12,8 @@ function bar(value, max, size = 14) {
 module.exports = {
   name: "balance",
   aliases: ["bal", "wallet"],
-  run(message, args) {
-    const user = message.mentions.users.first() ?? message.author;
+  async run(message, args) {
+    const user = (args[0] ? (await memberFromArgs(message, args, 0))?.user : null) ?? message.author;
     const u = getUser(user.id);
     const total = u.wallet + u.bank;
 

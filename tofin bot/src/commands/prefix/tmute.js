@@ -1,21 +1,23 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { parseDuration, formatDuration } = require("../../util/time");
 const { tempMute } = require("../../services/moderation");
 const { success, danger, warn } = require("../../util/embed");
 
 module.exports = {
-  name: "tmute",
+  name: "mute",
+  aliases: ["tmute"],
   async run(message, args) {
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Timeout Members)")] });
     }
-    const member = message.mentions.members.first();
+    const member = (await memberFromArgs(message, args, 0))?.member;
     if (!member) {
-      return message.reply({ embeds: [warn("Missing User", "You need to mention a user.\n**Usage:** `,tmute @user <duration> [reason]`\n**Example:** `,tmute @John 10m spamming`")] });
+      return message.reply({ embeds: [warn("Missing User", "You need to mention a user.\n**Usage:** `,mute @user <duration> [reason]`\n**Example:** `,mute @John 10m spamming`")] });
     }
     const ms = parseDuration(args[1]);
     if (!ms) {
-      return message.reply({ embeds: [warn("Missing Duration", "You need to provide how long to mute them.\n**Usage:** `,tmute @user <duration> [reason]`\n**Examples:** `10m` · `1h` · `2d`")] });
+      return message.reply({ embeds: [warn("Missing Duration", "You need to provide how long to mute them.\n**Usage:** `,mute @user <duration> [reason]`\n**Examples:** `10m` · `1h` · `2d`")] });
     }
     const reason = args.slice(2).join(" ") || "No reason";
 

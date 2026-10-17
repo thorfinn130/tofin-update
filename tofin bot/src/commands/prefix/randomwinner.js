@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { roleFromArgs } = require("../../util/resolve");
 const { rich, warn, danger } = require("../../util/embed");
 const { colors } = require("../../config");
 
@@ -9,7 +10,7 @@ module.exports = {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Manage Messages)")] });
     }
-    const role = message.mentions.roles.first();
+    const role = roleFromArgs(message, args)?.role;
     if (!role) {
       return message.reply({ embeds: [warn("Missing Role", "Mention a role to pick a winner from.\n**Usage:** `,randomwinner @role`\n**Example:** `,randomwinner @Giveaway`")] });
     }

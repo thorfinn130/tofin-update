@@ -1,13 +1,11 @@
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
 const { parseGIF, decompressFrames } = require("gifuct-js");
 const { GIFEncoder, quantize, applyPalette } = require("gifenc");
-const https = require("https");
-const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const ffmpegPath = require("ffmpeg-static");
+const { download } = require("./media");
 
 const CAPTION_BAR_RATIO = 0.22; // caption bar height as a fraction of image width
 const MIN_BAR_HEIGHT = 60;
@@ -16,17 +14,14 @@ const MAX_FRAMES = 300; // hard safety ceiling so an extreme video/gif can't han
 const VIDEO_OUTPUT_FPS = 10; // frames per second sampled from the source video
 const MAX_VIDEO_SECONDS = 60; // safety ceiling on conversion length — full video is used by default, capped here
 
-function fetchBuffer(url) {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith("https") ? https : http;
-    client.get(url, (res) => {
-      if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
-      const chunks = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
-  });
+const cache = new Map(); // url → { buf, at } — the command and the maker both fetch the same file
+async function fetchBuffer(url) {
+  const hit = cache.get(url);
+  if (hit && Date.now() - hit.at < 60_000) return hit.buf;
+  const buf = await download(url, { maxBytes: 100 * 1024 * 1024 });
+  cache.set(url, { buf, at: Date.now() });
+  if (cache.size > 4) cache.delete(cache.keys().next().value);
+  return buf;
 }
 
 function wrapText(ctx, text, maxWidth) {
@@ -93,114 +88,109 @@ function isVideoBuffer(buf) {
   return false;
 }
 
-// Extracts frames from a video file (buffer) as a list of raw PNG buffers, using ffmpeg.
-// Writes the input to a temp file since ffmpeg needs a seekable file path for most containers.
-// startSeconds/endSeconds are optional — if omitted, converts from the start / to the end (capped by MAX_VIDEO_SECONDS).
-function extractVideoFrames(videoBuffer, startSeconds = null, endSeconds = null) {
+// ── ffmpeg GIF engine ─────────────────────────────────────────────────────────
+// ffmpeg does decoding, scaling, caption overlay and a single shared high-quality
+// palette natively — far faster and cleaner than per-frame JS quantizing.
+function ffmpegBin() {
+  try {
+    const p = require("ffmpeg-static");
+    if (p && fs.existsSync(p)) return p;
+  } catch {}
+  return "ffmpeg"; // fall back to one installed on the system
+}
+
+function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    const tmpDir = os.tmpdir();
-    const inputPath = path.join(tmpDir, `gifmaker_in_${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`);
-    const outputPattern = path.join(tmpDir, `gifmaker_frame_${Date.now()}_${Math.random().toString(36).slice(2)}_%03d.png`);
-
-    fs.writeFileSync(inputPath, videoBuffer);
-
-    const start = startSeconds ?? 0;
-    // If an end time is given, use exactly that range. Otherwise convert up to MAX_VIDEO_SECONDS from the start point.
-    const duration = endSeconds != null
-      ? Math.max(0.1, endSeconds - start)
-      : MAX_VIDEO_SECONDS;
-    const cappedDuration = Math.min(duration, MAX_VIDEO_SECONDS);
-
-    const args = [
-      "-y",
-      ...(start > 0 ? ["-ss", String(start)] : []),
-      "-i", inputPath,
-      "-t", String(cappedDuration),
-      "-vf", `fps=${VIDEO_OUTPUT_FPS}`,
-      "-frames:v", String(MAX_FRAMES),
-      outputPattern,
-    ];
-
-    const proc = spawn(ffmpegPath, args);
+    const p = spawn(ffmpegBin(), ["-hide_banner", "-nostdin", ...args], { windowsHide: true });
     let stderr = "";
-    proc.stderr.on("data", (d) => { stderr += d.toString(); });
-
-    proc.on("error", (err) => {
-      cleanup();
-      reject(err);
-    });
-
-    proc.on("close", (code) => {
-      try {
-        if (code !== 0) {
-          cleanup();
-          return reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-300)}`));
-        }
-
-        const dir = path.dirname(outputPattern);
-        const uniquePrefix = path.basename(outputPattern).split("%03d")[0];
-        const frameFiles = fs.readdirSync(dir)
-          .filter((f) => f.startsWith(uniquePrefix))
-          .sort();
-
-        const frameBuffers = frameFiles.map((f) => fs.readFileSync(path.join(dir, f)));
-
-        // Cleanup temp files
-        frameFiles.forEach((f) => { try { fs.unlinkSync(path.join(dir, f)); } catch {} });
-        cleanup();
-
-        if (!frameBuffers.length) {
-          return reject(new Error("No frames could be extracted from that video."));
-        }
-        resolve(frameBuffers);
-      } catch (err) {
-        cleanup();
-        reject(err);
-      }
-    });
-
-    function cleanup() {
-      try { fs.unlinkSync(inputPath); } catch {}
-    }
+    p.stderr.on("data", (d) => { stderr = (stderr + d).slice(-20000); });
+    p.on("error", reject);
+    p.on("close", (code) => resolve({ code, stderr }));
   });
 }
 
+async function probeMedia(file) {
+  const { stderr } = await runFfmpeg(["-i", file]);
+  const size = stderr.match(/Video:.*?,\s*(\d{2,5})x(\d{2,5})/);
+  const dur = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  return {
+    width: size ? Number(size[1]) : null,
+    height: size ? Number(size[2]) : null,
+    duration: dur ? Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]) : null,
+  };
+}
+
+// Biggest-first; steps down until the GIF fits under `limit` bytes.
+const GIF_TIERS = [
+  { width: 540, fps: 20 },
+  { width: 480, fps: 15 },
+  { width: 400, fps: 12 },
+  { width: 320, fps: 10 },
+  { width: 240, fps: 8 },
+];
+
+async function ffmpegToGif(buffer, { caption = null, start = null, end = null, limit = 10 * 1024 * 1024 } = {}) {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gif-"));
+  const input = path.join(dir, "input.bin");
+  const capPng = path.join(dir, "caption.png");
+  const output = path.join(dir, "out.gif");
+  try {
+    await fs.promises.writeFile(input, buffer);
+    const info = await probeMedia(input);
+    if (!info.width) throw new Error("Could not read that video.");
+
+    const from = start ?? 0;
+    let length = end != null ? Math.max(0.1, end - from) : (info.duration != null ? Math.max(0.1, info.duration - from) : MAX_VIDEO_SECONDS);
+    length = Math.min(length, MAX_VIDEO_SECONDS);
+
+    // Longer clips start on a smaller tier so we don't waste passes on sizes that can't fit.
+    const startTier = length > 30 ? 3 : length > 15 ? 2 : length > 8 ? 1 : 0;
+    const even = (n) => Math.max(2, Math.floor(n / 2) * 2);
+
+    let last = null;
+    for (const tier of GIF_TIERS.slice(startTier)) {
+      const W = even(Math.min(info.width, tier.width));
+      const BH = caption ? barHeightFor(W) : 0;
+
+      if (caption) {
+        const c = createCanvas(W, BH);
+        drawCaptionBar(c.getContext("2d"), W, BH, caption);
+        await fs.promises.writeFile(capPng, c.toBuffer("image/png"));
+      }
+
+      const scaled = `[0:v]fps=${tier.fps},scale=${W}:-2:flags=lanczos`;
+      const palette = "split[a][b];[a]palettegen=stats_mode=diff[pal];[b][pal]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
+      const graph = caption
+        ? `${scaled},pad=${W}:ih+${BH}:0:${BH}:color=white[v];[v][1:v]overlay=0:0,${palette}`
+        : `${scaled},${palette}`;
+
+      const { code, stderr } = await runFfmpeg([
+        "-y",
+        ...(from > 0 ? ["-ss", String(from)] : []),
+        "-t", String(length),
+        "-i", input,
+        ...(caption ? ["-i", capPng] : []),
+        "-filter_complex", graph,
+        "-frames:v", String(MAX_FRAMES * 2),
+        "-loop", "0",
+        output,
+      ]);
+      if (code !== 0) throw new Error(`ffmpeg failed: ${stderr.slice(-300)}`);
+
+      last = await fs.promises.readFile(output);
+      if (last.length <= limit) return last;
+    }
+    throw new Error("GIF_TOO_LARGE");
+  } finally {
+    fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 // ── Video (MP4, WebM, MOV, etc.) → captioned animated GIF ─────────────────────
-// startSeconds/endSeconds are optional trim points; omit either (or both) to use the full video.
-async function makeGifFromVideo(videoUrl, caption, startSeconds = null, endSeconds = null) {
+// start/end are optional trim points in seconds; omit either (or both) for the full video.
+async function makeGifFromVideo(videoUrl, caption, startSeconds = null, endSeconds = null, limit) {
   const buf = await fetchBuffer(videoUrl);
-  const frameBuffers = await extractVideoFrames(buf, startSeconds, endSeconds);
-
-  const firstFrame = await loadImage(frameBuffers[0]);
-  const barHeight = caption ? barHeightFor(firstFrame.width) : 0;
-  const outWidth = firstFrame.width;
-  const outHeight = firstFrame.height + barHeight;
-
-  let captionCanvas = null;
-  if (caption) {
-    captionCanvas = createCanvas(outWidth, barHeight);
-    drawCaptionBar(captionCanvas.getContext("2d"), outWidth, barHeight, caption);
-  }
-
-  const gif = GIFEncoder();
-  const canvas = createCanvas(outWidth, outHeight);
-  const ctx = canvas.getContext("2d");
-  const delayMs = Math.round(1000 / VIDEO_OUTPUT_FPS);
-
-  for (const frameBuf of frameBuffers) {
-    const img = await loadImage(frameBuf);
-    ctx.clearRect(0, 0, outWidth, outHeight);
-    if (captionCanvas) ctx.drawImage(captionCanvas, 0, 0);
-    ctx.drawImage(img, 0, barHeight, outWidth, firstFrame.height);
-
-    const { data } = ctx.getImageData(0, 0, outWidth, outHeight);
-    const palette = quantize(data, 256);
-    const index = applyPalette(data, palette);
-    gif.writeFrame(index, outWidth, outHeight, { palette, delay: delayMs });
-  }
-
-  gif.finish();
-  return Buffer.from(gif.bytes());
+  return ffmpegToGif(buf, { caption, start: startSeconds, end: endSeconds, limit });
 }
 
 // ── Static image (or single-frame treatment) → single-frame GIF, optional caption ─
@@ -226,7 +216,7 @@ async function makeStaticGif(imageUrl, caption) {
 }
 
 // ── Animated GIF → re-encoded animated GIF, optional caption bar on every frame ─
-async function makeCaptionedAnimatedGif(imageUrl, caption) {
+async function makeCaptionedAnimatedGifJs(imageUrl, caption) {
   const buf = await fetchBuffer(imageUrl);
 
   if (!isGifBuffer(buf)) {
@@ -280,6 +270,17 @@ async function makeCaptionedAnimatedGif(imageUrl, caption) {
   return Buffer.from(gif.bytes());
 }
 
+async function makeCaptionedAnimatedGif(imageUrl, caption, limit) {
+  const buf = await fetchBuffer(imageUrl);
+  if (!isGifBuffer(buf)) throw new Error("NOT_A_GIF");
+  try {
+    return await ffmpegToGif(buf, { caption, limit });
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err; // ffmpeg missing on this machine → use the slower JS path
+    return makeCaptionedAnimatedGifJs(imageUrl, caption);
+  }
+}
+
 // Parses "5", "0:05", "1:23", "1:02:03" into seconds. Returns null if not a valid time format.
 function parseTimeToSeconds(str) {
   if (!str) return null;
@@ -293,4 +294,4 @@ function parseTimeToSeconds(str) {
   return nums[0] * 3600 + nums[1] * 60 + nums[2];
 }
 
-module.exports = { makeStaticGif, makeCaptionedAnimatedGif, makeGifFromVideo, isGifBuffer, isVideoBuffer, fetchBuffer, parseTimeToSeconds };
+module.exports = { ffmpegToGif, makeStaticGif, makeCaptionedAnimatedGif, makeGifFromVideo, isGifBuffer, isVideoBuffer, fetchBuffer, parseTimeToSeconds };

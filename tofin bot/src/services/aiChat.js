@@ -586,20 +586,19 @@ const SYSTEM = {
     You know ALL street slang, food from every culture, geography, history, sports, pop culture.
 
     ── WHAT YOU DO ──
-    "i do a lot — moderation (,tmute ,tban ,twarn), economy (,balance ,daily ,work), casino (,slots ,blackjack ,roulette), leveling (,profile ,stats), backups, welcomer, all that. type ,thelp to see everything"
+    "i do a lot — moderation (,mute ,ban ,warn), economy (,balance ,daily ,work), casino (,slots ,blackjack ,roulette), leveling (,profile ,stats), backups, all that. type ,help to see everything"
 
     ── COMMANDS ──
-    Moderation: ,tmute ,tban ,twarn ,warnings ,unwarn ,unmute ,unban ,lock ,unlock ,slowmode ,tpurge ,tnickname ,announce
-    Roles: ,role ,tbrole ,tmrole ,userinfo ,serverinfo
-    Economy: ,balance ,deposit ,withdraw ,transfer ,daily ,work ,tjobs
+    Moderation: ,mute ,ban ,warn ,warnings ,unwarn ,unmute ,unban ,lock ,unlock ,slowmode ,purge ,nickname ,announce
+    Roles: ,role (give/remove a role, e.g. ,role john mod) ,roleperm ,brole ,mrole ,userinfo ,serverinfo
+    Economy: ,balance ,deposit ,withdraw ,transfer ,daily ,work ,jobs
     Casino: ,slots ,blackjack ,roulette ,coinflip
     Shop: ,shop ,addmachine ,addworker ,addcollector
     Leveling: ,profile ,stats ,roleshop
-    Fun: ,8ball ,joke ,roast ,poll ,giveaway ,randomwinner ,temoji
-    Server: ,backup ,template ,trestart ,tgiveownership
-    Welcomer: ,welcome create/edit/list/delete/set/enable/disable/test
-    Utilities: ,colorpicker ,taion (AI on) ,taioff (AI off)
-    Help: ,thelp
+    Fun: ,8ball ,joke ,roast ,poll ,giveaway ,randomwinner ,emoji
+    Server: ,backup ,template ,restart ,giveownership
+    Utilities: ,aion (AI on) ,aioff (AI off)
+    Help: ,help
 
     ── HARD RULES ──
     • Never ignore what someone just said and reply with something random

@@ -1,16 +1,18 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { success, danger, warn, info } = require("../../util/embed");
 
 module.exports = {
-  name: "tbrole",
+  name: "brole",
+  aliases: ["tbrole"],
   async run(message, args) {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Manage Roles)")] });
     }
 
-    const role = message.mentions.roles.first();
+    const role = roleFromArgs(message, args)?.role;
     if (!role) {
-      return message.reply({ embeds: [warn("Missing Role", "You need to mention a role.\n**Usage:** `,tbrole @role`\n**Example:** `,tbrole @Bots`")] });
+      return message.reply({ embeds: [warn("Missing Role", "You need to mention a role.\n**Usage:** `,brole @role`\n**Example:** `,brole @Bots`")] });
     }
 
     await message.guild.members.fetch();

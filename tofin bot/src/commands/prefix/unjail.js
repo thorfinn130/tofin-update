@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getConfig, getActiveJail, clearActiveJail } = require("../../services/jail");
 const { success, danger, warn } = require("../../util/embed");
 
@@ -9,7 +10,7 @@ module.exports = {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: (Administrator)")] });
     }
 
-    const target = message.mentions.members.first();
+    const target = (await memberFromArgs(message, args, 0))?.member;
     if (!target) {
       return message.reply({ embeds: [warn("Missing User", "**Usage:** `,unjail @user`")] });
     }

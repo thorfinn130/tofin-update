@@ -262,25 +262,6 @@ client.on("guildMemberAdd", async (member) => {
   } catch (e) {
     console.error("[guildMemberAdd autorole]", e);
   }
-
-  try {
-    const { getGuildConfig, getTemplate, buildWelcomeEmbed, resolveVars, resolveGifUrl } = require("./services/welcomer");
-    const cfg = getGuildConfig(member.guild.id);
-    if (!cfg?.enabled || !cfg?.channelId || !cfg?.templateName || !cfg?.templateOwner) return;
-    const tpl = getTemplate(cfg.templateOwner, cfg.templateName);
-    if (!tpl) return;
-    const channel = member.guild.channels.cache.get(cfg.channelId);
-    if (!channel) return;
-    const [resolvedImage, resolvedThumb] = await Promise.all([
-      resolveGifUrl(tpl.image    ? resolveVars(tpl.image,     member) : null),
-      resolveGifUrl(tpl.thumbnail? resolveVars(tpl.thumbnail, member) : null),
-    ]);
-    const tplResolved = { ...tpl, image: resolvedImage, thumbnail: resolvedThumb };
-    const { embed, content } = buildWelcomeEmbed(tplResolved, member);
-    await channel.send({ content: content ?? undefined, embeds: [embed] });
-  } catch (e) {
-    console.error("[guildMemberAdd welcomer]", e);
-  }
 });
 
 client.on("guildMemberRemove", (member) => {

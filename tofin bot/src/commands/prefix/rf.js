@@ -1,4 +1,5 @@
 const { PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { roleFromArgs } = require("../../util/resolve");
 const { danger, warn, success } = require("../../util/embed");
 
 module.exports = {
@@ -8,7 +9,7 @@ module.exports = {
       return message.reply({ embeds: [danger("Missing Permission", "Permission: **Manage Roles**")] });
     }
 
-    const role = message.mentions.roles.first();
+    const role = roleFromArgs(message, args)?.role;
     if (!role) return message.reply({ embeds: [warn("Usage", "**Usage:** `,rf @role`\nMention the role you want to delete.")] });
 
     if (role.position >= message.guild.members.me.roles.highest.position) {

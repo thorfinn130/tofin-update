@@ -1,6 +1,7 @@
 const { ChannelType, PermissionsBitField, PermissionFlagsBits } = require("discord.js");
 const { read, write, getUser, setUser } = require("../storage");
 const crypto = require("crypto");
+const { closest } = require("../util/resolve");
 
 const STORE = "templates";
 const LINKS = "tpl_links";
@@ -12,6 +13,14 @@ function listTemplates(userId) {
 
 function getTemplate(userId, name) {
   return getUser(STORE, userId, {})[name];
+}
+
+// Exact name first, otherwise the closest saved name ("my servr" → "My Server").
+function findTemplate(userId, name) {
+  const all = getUser(STORE, userId, {});
+  if (all[name]) return { tpl: all[name], name, guessed: false };
+  const hit = closest(name, Object.keys(all));
+  return hit ? { tpl: all[hit.value], name: hit.value, guessed: !hit.exact } : null;
 }
 
 function saveTemplate(guild, userId, name) {
@@ -125,172 +134,189 @@ function botInviteUrl(botId, permissions = 8n) {
   return `https://discord.com/oauth2/authorize?client_id=${botId}&scope=bot%20applications.commands&permissions=${permissions}`;
 }
 
+// Runs `fn` over `items` with at most `limit` in flight. Keeps result order.
+async function pool(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+const failReason = (err) => (err?.message?.includes("Maximum") ? "slot limit reached" : "failed");
+
+// Create saved channels (categories first, then the rest) in parallel batches,
+// then put them back in their saved order. `existingRoles` maps role name → Role.
+async function createChannels(guild, tpl, roleMap, reason) {
+  const idMap = new Map(); // old channel id → new channel id
+  const byPos = (a, b) => a.position - b.position;
+
+  const cats = (tpl.channels ?? []).filter((c) => c.type === ChannelType.GuildCategory).sort(byPos);
+  const catsMade = await pool(cats, 5, (c) => {
+    const ow = buildOverwrites(c, guild, roleMap);
+    return guild.channels.create({
+      name: c.name,
+      type: ChannelType.GuildCategory,
+      ...(ow.length ? { permissionOverwrites: ow } : {}),
+      reason,
+    }).catch(() => null);
+  });
+  cats.forEach((c, i) => catsMade[i] && idMap.set(c.id, catsMade[i].id));
+
+  const others = (tpl.channels ?? []).filter((c) => c.type !== ChannelType.GuildCategory).sort(byPos);
+  const othersMade = await pool(others, 6, (c) => {
+    const ow = buildOverwrites(c, guild, roleMap);
+    const parent = c.parentId ? (idMap.get(c.parentId) ?? undefined) : undefined;
+    return guild.channels.create({
+      name: c.name,
+      type: c.type,
+      parent,
+      topic: c.topic ?? undefined,
+      nsfw: c.nsfw ?? false,
+      ...(ow.length ? { permissionOverwrites: ow } : {}),
+      reason,
+    }).catch(() => null);
+  });
+
+  // Parallel creation finishes in random order, so restore the saved order in ONE call.
+  const positions = [];
+  catsMade.forEach((ch, i) => ch && positions.push({ channel: ch.id, position: i }));
+  const groups = new Map(); // old parent id → running index
+  others.forEach((c, i) => {
+    const ch = othersMade[i];
+    if (!ch) return;
+    const key = c.parentId ?? "root";
+    const idx = groups.get(key) ?? 0;
+    groups.set(key, idx + 1);
+    positions.push({ channel: ch.id, position: idx });
+  });
+  if (positions.length) await guild.channels.setPositions(positions).catch(() => {});
+
+  return {
+    cats: { made: catsMade, src: cats },
+    others: { made: othersMade, src: others },
+    added: catsMade.filter(Boolean).length + othersMade.filter(Boolean).length,
+    failed: [
+      ...cats.filter((_, i) => !catsMade[i]).map((c) => ({ name: c.name, reason: "failed" })),
+      ...others.filter((_, i) => !othersMade[i]).map((c) => ({ name: c.name, reason: "failed" })),
+    ],
+  };
+}
+
+async function createEmojis(guild, list, reason, skipNames = new Set()) {
+  const result = { added: 0, failed: [] };
+  await pool(list ?? [], 4, async (e) => {
+    if (skipNames.has(e.name)) { result.failed.push({ name: e.name, reason: "already exists" }); return; }
+    try {
+      await guild.emojis.create({ attachment: e.url, name: e.name, reason });
+      result.added++;
+    } catch (err) {
+      result.failed.push({ name: e.name, reason: failReason(err) });
+    }
+  });
+  return result;
+}
+
+async function createStickers(guild, list, reason, skipNames = new Set()) {
+  const result = { added: 0, failed: [] };
+  await pool(list ?? [], 3, async (s) => {
+    if (skipNames.has(s.name)) { result.failed.push({ name: s.name, reason: "already exists" }); return; }
+    try {
+      await guild.stickers.create({
+        file: s.url, name: s.name, tags: s.tags || s.name,
+        description: s.description || undefined, reason,
+      });
+      result.added++;
+    } catch (err) {
+      result.failed.push({ name: s.name, reason: failReason(err) });
+    }
+  });
+  return result;
+}
+
 async function applyTemplate(guild, tpl, modes = ["full"], owner = null) {
   // Accept a plain string for backwards compatibility with any old call sites.
   if (typeof modes === "string") modes = [modes];
+  const reason = `Template load: ${tpl.name}`;
 
-  // ── LOCK all channels ────────────────────────────────────────────────────
+  // ── CLEAR old stuff — every category at the same time, items in parallel ──
+  const clears = [];
   if (modeIncludes(modes, "channels")) {
-    await Promise.all(
-      guild.channels.cache.map((ch) =>
-        ch.permissionOverwrites?.edit(guild.roles.everyone, { ViewChannel: false }).catch(() => {})
-      )
-    );
+    clears.push(pool([...guild.channels.cache.values()], 8, (ch) => ch.delete(reason).catch(() => {})));
   }
-
-  // ── DELETE old channels ──────────────────────────────────────────────────
-  if (modeIncludes(modes, "channels")) {
-    for (const [, ch] of guild.channels.cache) {
-      await ch.delete("Template load: clearing old channels").catch(() => {});
-    }
-  }
-
-  // ── DELETE old roles ─────────────────────────────────────────────────────
   if (modeIncludes(modes, "roles")) {
-    for (const [, role] of guild.roles.cache) {
-      if (role.name === "@everyone" || role.managed || role.id === guild.id) continue;
-      await role.delete("Template load: clearing old roles").catch(() => {});
-    }
+    clears.push(pool(
+      [...guild.roles.cache.values()].filter((r) => r.id !== guild.id && r.name !== "@everyone" && !r.managed),
+      6, (r) => r.delete(reason).catch(() => {})
+    ));
   }
-
-  // ── DELETE old emojis ─────────────────────────────────────────────────────
   if (modeIncludes(modes, "emojis")) {
-    for (const [, emoji] of guild.emojis.cache) {
-      await emoji.delete("Template load: clearing old emojis").catch(() => {});
-    }
+    clears.push(pool([...guild.emojis.cache.values()], 6, (e) => e.delete(reason).catch(() => {})));
   }
-
-  // ── DELETE old stickers ───────────────────────────────────────────────────
   if (modeIncludes(modes, "stickers")) {
-    for (const [, sticker] of guild.stickers.cache) {
-      if (sticker.type !== 2) continue; // never touch standard/Nitro pack stickers
-      await sticker.delete("Template load: clearing old stickers").catch(() => {});
-    }
+    // never touch standard/Nitro pack stickers
+    clears.push(pool([...guild.stickers.cache.values()].filter((s) => s.type === 2), 6, (s) => s.delete(reason).catch(() => {})));
   }
+  await Promise.all(clears);
 
-  // ── CREATE new roles ─────────────────────────────────────────────────────
+  // ── CREATE roles (order is fixed afterwards by setPositions, so go parallel) ──
   const roleMap = new Map(); // roleName → Role
   if (modeIncludes(modes, "roles") || modes.includes("bots")) {
-    // Sort DESCENDING so the lowest-position roles are created last.
-    // Discord inserts new roles at position 1 each time, pushing previous ones up.
-    // Creating high-position roles first means they get pushed to the top naturally.
-    const sorted = [...tpl.roles].sort((a, b) => b.position - a.position);
-    for (const r of sorted) {
-      const created = await guild.roles.create({
-        name:        r.name,
-        color:       r.color,
-        hoist:       r.hoist,
-        mentionable: r.mentionable,
+    const made = await pool(tpl.roles ?? [], 5, (r) =>
+      guild.roles.create({
+        name: r.name, color: r.color, hoist: r.hoist, mentionable: r.mentionable,
         permissions: new PermissionsBitField(BigInt(r.permissions)),
-        reason:      `Template load: ${tpl.name}`,
-      }).catch(() => null);
-      if (created) roleMap.set(r.name, created);
-    }
+        reason,
+      }).catch(() => null)
+    );
+    (tpl.roles ?? []).forEach((r, i) => made[i] && roleMap.set(r.name, made[i]));
 
-    // Re-apply positions using normalized sequential ranks (1, 2, 3…) so the
-    // relative order is always preserved regardless of the source server's
-    // position numbers, and always stays within the bot's own role ceiling.
-    const positionData = [...tpl.roles]
-      .sort((a, b) => a.position - b.position)   // lowest saved pos first
+    // Normalised sequential ranks keep the relative order and stay under the bot's own ceiling.
+    const positionData = [...(tpl.roles ?? [])]
+      .sort((a, b) => a.position - b.position)
       .reduce((acc, r, idx) => {
         const role = roleMap.get(r.name);
-        if (role) acc.push({ role: role.id, position: idx + 1 }); // 1-based ranks
+        if (role) acc.push({ role: role.id, position: idx + 1 });
         return acc;
       }, []);
-    if (positionData.length) {
-      await guild.roles.setPositions(positionData).catch(() => {});
-    }
+    if (positionData.length) await guild.roles.setPositions(positionData).catch(() => {});
   }
 
-  // ── ASSIGN bot roles ─────────────────────────────────────────────────────
-  const missingBots = []; // bots not in this guild
-  if (modeIncludes(modes, "bots") && tpl.botRoles?.length) {
-    await guild.members.fetch();
-    for (const entry of tpl.botRoles) {
-      const member = guild.members.cache.get(entry.botId);
-      if (!member) {
-        missingBots.push(entry);
-        continue;
-      }
-      for (const roleName of entry.roles) {
-        const role = roleMap.get(roleName) ?? guild.roles.cache.find((r) => r.name === roleName);
-        if (role) await member.roles.add(role).catch(() => {});
-      }
-    }
-  }
+  // ── Channels, emojis, stickers and bot roles don't depend on each other: run together ──
+  const missingBots = [];
+  const jobs = {};
 
-  // ── CREATE new emojis ─────────────────────────────────────────────────────
-  const emojiResult = { added: 0, failed: [] };
-  if (modeIncludes(modes, "emojis") && tpl.emojis?.length) {
-    for (const e of tpl.emojis) {
-      try {
-        await guild.emojis.create({ attachment: e.url, name: e.name, reason: `Template load: ${tpl.name}` });
-        emojiResult.added++;
-      } catch (err) {
-        emojiResult.failed.push({ name: e.name, reason: err.message?.includes("Maximum") ? "slot limit reached" : "failed" });
-      }
-    }
-  }
-
-  // ── CREATE new stickers ───────────────────────────────────────────────────
-  const stickerResult = { added: 0, failed: [] };
-  if (modeIncludes(modes, "stickers") && tpl.stickers?.length) {
-    for (const s of tpl.stickers) {
-      try {
-        await guild.stickers.create({
-          file: s.url,
-          name: s.name,
-          tags: s.tags || s.name,
-          description: s.description || undefined,
-          reason: `Template load: ${tpl.name}`,
-        });
-        stickerResult.added++;
-      } catch (err) {
-        stickerResult.failed.push({ name: s.name, reason: err.message?.includes("Maximum") ? "slot limit reached" : "failed" });
-      }
-    }
-  }
-
-  // ── CREATE new channels (with permission overwrites) ──────────────────────
   if (modeIncludes(modes, "channels")) {
-    const idMap = new Map(); // old channel id → new channel id
-
-    // Categories first
-    const cats = tpl.channels
-      .filter((c) => c.type === ChannelType.GuildCategory)
-      .sort((a, b) => a.position - b.position);
-
-    for (const c of cats) {
-      const overwrites = buildOverwrites(c, guild, roleMap);
-      const created = await guild.channels.create({
-        name:                 c.name,
-        type:                 ChannelType.GuildCategory,
-        // Only set overwrites if there are real ones; otherwise let Discord default
-        ...(overwrites.length ? { permissionOverwrites: overwrites } : {}),
-      }).catch(() => null);
-      if (created) idMap.set(c.id, created.id);
-    }
-
-    // Other channels
-    const others = tpl.channels
-      .filter((c) => c.type !== ChannelType.GuildCategory)
-      .sort((a, b) => a.position - b.position);
-
-    for (const c of others) {
-      const overwrites = buildOverwrites(c, guild, roleMap);
-      const parentId   = c.parentId ? (idMap.get(c.parentId) ?? undefined) : undefined;
-      await guild.channels.create({
-        name:   c.name,
-        type:   c.type,
-        parent: parentId,
-        topic:  c.topic ?? undefined,
-        nsfw:   c.nsfw  ?? false,
-        // If no explicit overwrites were saved, omit the field so the channel
-        // inherits from its parent category (preserves private staff channels, etc.)
-        ...(overwrites.length ? { permissionOverwrites: overwrites } : {}),
-      }).catch(() => {});
-    }
+    jobs.channels = createChannels(guild, tpl, roleMap, reason);
   }
+  if (modeIncludes(modes, "emojis") && tpl.emojis?.length) {
+    jobs.emojis = createEmojis(guild, tpl.emojis, reason);
+  }
+  if (modeIncludes(modes, "stickers") && tpl.stickers?.length) {
+    jobs.stickers = createStickers(guild, tpl.stickers, reason);
+  }
+  if (modeIncludes(modes, "bots") && tpl.botRoles?.length) {
+    jobs.bots = (async () => {
+      await guild.members.fetch();
+      await pool(tpl.botRoles, 5, async (entry) => {
+        const member = guild.members.cache.get(entry.botId);
+        if (!member) { missingBots.push(entry); return; }
+        const roles = entry.roles
+          .map((name) => roleMap.get(name) ?? guild.roles.cache.find((r) => r.name === name))
+          .filter(Boolean);
+        if (roles.length) await member.roles.add(roles).catch(() => {});
+      });
+    })();
+  }
+
+  await Promise.all(Object.values(jobs));
+  const emojiResult   = (await jobs.emojis)   ?? { added: 0, failed: [] };
+  const stickerResult = (await jobs.stickers) ?? { added: 0, failed: [] };
 
   // ── DM owner when done ───────────────────────────────────────────────────
   if (owner) {
@@ -301,32 +327,21 @@ async function applyTemplate(guild, tpl, modes = ["full"], owner = null) {
 
     let inviteSection = "";
     if (missingBots.length) {
-      const links = missingBots
-        .map((b) => `• **${b.botName}** → ${botInviteUrl(b.botId)}`)
-        .join("\n");
+      const links = missingBots.map((b) => `• **${b.botName}** → ${botInviteUrl(b.botId)}`).join("\n");
       inviteSection = `\n\n**⚠️ Missing bots — invite them manually:**\n${links}`;
     }
 
-    let emojiSection = "";
-    if (emojiResult.added || emojiResult.failed.length) {
-      emojiSection = `\n\n**😀 Emojis:** ${emojiResult.added} added`;
-      if (emojiResult.failed.length) {
-        emojiSection += `, ${emojiResult.failed.length} failed (${emojiResult.failed.map((f) => `${f.name}: ${f.reason}`).join(", ")})`;
-      }
-    }
-
-    let stickerSection = "";
-    if (stickerResult.added || stickerResult.failed.length) {
-      stickerSection = `\n\n**🏷️ Stickers:** ${stickerResult.added} added`;
-      if (stickerResult.failed.length) {
-        stickerSection += `, ${stickerResult.failed.length} failed (${stickerResult.failed.map((f) => `${f.name}: ${f.reason}`).join(", ")})`;
-      }
-    }
+    const section = (icon, label, r) => {
+      if (!r.added && !r.failed.length) return "";
+      let s = `\n\n**${icon} ${label}:** ${r.added} added`;
+      if (r.failed.length) s += `, ${r.failed.length} failed (${r.failed.map((f) => `${f.name}: ${f.reason}`).join(", ")})`;
+      return s;
+    };
 
     await owner.send({
       embeds: [{
         title:       "✅  Template Load Complete",
-        description: `**${tpl.name}** finished loading on **${guild.name}**.\nLoaded: **${modeLabel}**${inviteSection}${emojiSection}${stickerSection}`,
+        description: `**${tpl.name}** finished loading on **${guild.name}**.\nLoaded: **${modeLabel}**${inviteSection}${section("😀", "Emojis", emojiResult)}${section("🏷️", "Stickers", stickerResult)}`,
         color:       0x57F287,
         timestamp:   new Date().toISOString(),
       }],
@@ -340,122 +355,59 @@ async function applyTemplate(guild, tpl, modes = ["full"], owner = null) {
 // Only adds the template's items for the given categories on top of what's already there.
 async function applyTemplateAdditive(guild, tpl, categories) {
   const results = {};
+  const reason = `Template add: ${tpl.name}`;
+  const jobs = [];
 
+  // Roles first (channels need them for permission overwrites)
   if (categories.includes("roles")) {
     const existingNames = new Set(guild.roles.cache.map((r) => r.name));
-    let added = 0;
     const failed = [];
-    for (const r of tpl.roles ?? []) {
-      if (existingNames.has(r.name)) { failed.push({ name: r.name, reason: "already exists" }); continue; }
+    let added = 0;
+    await pool(tpl.roles ?? [], 5, async (r) => {
+      if (existingNames.has(r.name)) { failed.push({ name: r.name, reason: "already exists" }); return; }
       try {
         await guild.roles.create({
           name: r.name, color: r.color, hoist: r.hoist, mentionable: r.mentionable,
-          permissions: new PermissionsBitField(BigInt(r.permissions)),
-          reason: `Template add: ${tpl.name}`,
+          permissions: new PermissionsBitField(BigInt(r.permissions)), reason,
         });
         added++;
-      } catch (err) {
-        failed.push({ name: r.name, reason: "failed" });
-      }
-    }
+      } catch { failed.push({ name: r.name, reason: "failed" }); }
+    });
     results.roles = { added, failed };
   }
 
   if (categories.includes("channels")) {
-    const roleMap = new Map(guild.roles.cache.map((r) => [r.name, r]));
-    let added = 0;
-    const failed = [];
-    const idMap = new Map();
-
-    const cats = (tpl.channels ?? []).filter((c) => c.type === ChannelType.GuildCategory);
-    for (const c of cats) {
-      try {
-        const overwrites = buildOverwrites(c, guild, roleMap);
-        const created = await guild.channels.create({
-          name: c.name, type: ChannelType.GuildCategory,
-          ...(overwrites.length ? { permissionOverwrites: overwrites } : {}),
-        });
-        idMap.set(c.id, created.id);
-        added++;
-      } catch {
-        failed.push({ name: c.name, reason: "failed" });
-      }
-    }
-
-    const others = (tpl.channels ?? []).filter((c) => c.type !== ChannelType.GuildCategory);
-    for (const c of others) {
-      try {
-        const overwrites = buildOverwrites(c, guild, roleMap);
-        const parentId = c.parentId ? (idMap.get(c.parentId) ?? undefined) : undefined;
-        await guild.channels.create({
-          name: c.name, type: c.type, parent: parentId,
-          topic: c.topic ?? undefined, nsfw: c.nsfw ?? false,
-          ...(overwrites.length ? { permissionOverwrites: overwrites } : {}),
-        });
-        added++;
-      } catch {
-        failed.push({ name: c.name, reason: "failed" });
-      }
-    }
-    results.channels = { added, failed };
+    jobs.push((async () => {
+      const roleMap = new Map(guild.roles.cache.map((r) => [r.name, r]));
+      const { added, failed } = await createChannels(guild, tpl, roleMap, reason);
+      results.channels = { added, failed };
+    })());
   }
 
   if (categories.includes("bots")) {
-    await guild.members.fetch();
-    const roleMap = new Map(guild.roles.cache.map((r) => [r.name, r]));
-    let added = 0;
-    const failed = [];
-    for (const entry of tpl.botRoles ?? []) {
-      const member = guild.members.cache.get(entry.botId);
-      if (!member) { failed.push({ name: entry.botName, reason: "bot not in this server" }); continue; }
-      let any = false;
-      for (const roleName of entry.roles) {
-        const role = roleMap.get(roleName);
-        if (role && !member.roles.cache.has(role.id)) {
-          await member.roles.add(role).catch(() => {});
-          any = true;
-        }
-      }
-      if (any) added++;
-    }
-    results.bots = { added, failed };
+    jobs.push((async () => {
+      await guild.members.fetch();
+      const roleMap = new Map(guild.roles.cache.map((r) => [r.name, r]));
+      let added = 0;
+      const failed = [];
+      await pool(tpl.botRoles ?? [], 5, async (entry) => {
+        const member = guild.members.cache.get(entry.botId);
+        if (!member) { failed.push({ name: entry.botName, reason: "bot not in this server" }); return; }
+        const roles = entry.roles.map((n) => roleMap.get(n)).filter((r) => r && !member.roles.cache.has(r.id));
+        if (roles.length) { await member.roles.add(roles).catch(() => {}); added++; }
+      });
+      results.bots = { added, failed };
+    })());
   }
 
   if (categories.includes("emojis")) {
-    const existingNames = new Set(guild.emojis.cache.map((e) => e.name));
-    let added = 0;
-    const failed = [];
-    for (const e of tpl.emojis ?? []) {
-      if (existingNames.has(e.name)) { failed.push({ name: e.name, reason: "already exists" }); continue; }
-      try {
-        await guild.emojis.create({ attachment: e.url, name: e.name, reason: `Template add: ${tpl.name}` });
-        added++;
-      } catch (err) {
-        failed.push({ name: e.name, reason: err.message?.includes("Maximum") ? "slot limit reached" : "failed" });
-      }
-    }
-    results.emojis = { added, failed };
+    jobs.push(createEmojis(guild, tpl.emojis, reason, new Set(guild.emojis.cache.map((e) => e.name))).then((r) => { results.emojis = r; }));
   }
-
   if (categories.includes("stickers")) {
-    const existingNames = new Set(guild.stickers.cache.map((s) => s.name));
-    let added = 0;
-    const failed = [];
-    for (const s of tpl.stickers ?? []) {
-      if (existingNames.has(s.name)) { failed.push({ name: s.name, reason: "already exists" }); continue; }
-      try {
-        await guild.stickers.create({
-          file: s.url, name: s.name, tags: s.tags || s.name,
-          description: s.description || undefined, reason: `Template add: ${tpl.name}`,
-        });
-        added++;
-      } catch (err) {
-        failed.push({ name: s.name, reason: err.message?.includes("Maximum") ? "slot limit reached" : "failed" });
-      }
-    }
-    results.stickers = { added, failed };
+    jobs.push(createStickers(guild, tpl.stickers, reason, new Set(guild.stickers.cache.map((s) => s.name))).then((r) => { results.stickers = r; }));
   }
 
+  await Promise.all(jobs);
   return results;
 }
 
@@ -489,7 +441,7 @@ function buildOverwrites(savedChannel, guild, roleMap) {
 }
 
 async function loadTemplate(guild, userId, name, modes = ["full"], owner = null) {
-  const tpl = getTemplate(userId, name);
+  const tpl = findTemplate(userId, name)?.tpl;
   if (!tpl) throw new Error(`Template **${name}** not found in your account.`);
   const result = await applyTemplate(guild, tpl, modes, owner);
   return { tpl, ...result };
@@ -497,7 +449,7 @@ async function loadTemplate(guild, userId, name, modes = ["full"], owner = null)
 
 // Purely additive — never deletes/touches anything currently in the server.
 async function addToServer(guild, userId, name, categories) {
-  const tpl = getTemplate(userId, name);
+  const tpl = findTemplate(userId, name)?.tpl;
   if (!tpl) throw new Error(`Template **${name}** not found in your account.`);
   const results = await applyTemplateAdditive(guild, tpl, categories);
   return { tpl, results };
@@ -505,8 +457,9 @@ async function addToServer(guild, userId, name, categories) {
 
 // ── One-time share links ──────────────────────────────────────────────────────
 function generateLink(userId, templateName) {
-  const tpl = getTemplate(userId, templateName);
-  if (!tpl) return null;
+  const found = findTemplate(userId, templateName);
+  if (!found) return null;
+  templateName = found.name;
   const code  = crypto.randomBytes(6).toString("hex");
   const links = read(LINKS, {});
   links[code] = { userId, templateName, used: false, createdAt: Date.now() };
@@ -535,6 +488,6 @@ function deleteTemplate(userId, name) {
 }
 
 module.exports = {
-  saveTemplate, loadTemplate, addToServer, listTemplates, getTemplate, deleteTemplate,
+  saveTemplate, loadTemplate, addToServer, listTemplates, getTemplate, findTemplate, deleteTemplate,
   generateLink, useLink, applyTemplate, applyTemplateAdditive, parseModeAndName, MODES,
 };

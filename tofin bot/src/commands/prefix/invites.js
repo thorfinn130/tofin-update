@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require("discord.js");
+const { memberFromArgs, roleFromArgs } = require("../../util/resolve");
 const { getInviteStats, getLeaderboard, syncFromDiscord } = require("../../services/inviteTracker");
 
 module.exports = {
@@ -46,7 +47,7 @@ module.exports = {
     }
 
     // ,invites [@user]
-    const user   = message.mentions.users.first() ?? message.author;
+    const user   = (args[0] ? (await memberFromArgs(message, args, 0))?.user : null) ?? message.author;
     const member = message.guild.members.cache.get(user.id);
     const stats  = getInviteStats(message.guild.id, user.id);
 

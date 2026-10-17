@@ -63,7 +63,7 @@ module.exports = {
     return message.reply({
       embeds: [warn(
         "Usage",
-        "`,alias add <alias> <command>` — create a shortcut\n**Example:** `,alias add help thelp` → now `,help` runs `,thelp`\n`,alias remove <alias>` — delete one\n`,alias list` — view all aliases"
+        "`,alias add <alias> <command>` — create a shortcut\n**Example:** `,alias add help thelp` → now `,help` runs `,help`\n`,alias remove <alias>` — delete one\n`,alias list` — view all aliases"
       )],
     });
   },
