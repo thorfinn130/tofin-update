@@ -25,48 +25,6 @@ const CATEGORIES = {
       { name: "Status Roles", value: "`,status @role <text>` — auto-give a role when someone's custom status contains that text *(Manage Roles)*\n`,status list` — view active rules\n`,status remove @role` — stop tracking & strip the role from everyone\n> Removing the text from their status removes the role too", inline: false },
     ],
   },
-  economy: {
-    label: "💰  Economy",
-    emoji: "💰",
-    color: 0xF1C40F,
-    fields: [
-      { name: "Wallet & Bank", value: "`,balance [@user]` (`,bal`) — view wallet & bank\n`,deposit <amount|all>` (`,dep`) — wallet → bank\n`,withdraw <amount|all>` (`,with`) — bank → wallet\n`,transfer @user <amount>` (`,pay`) — send TC to someone", inline: false },
-      { name: "Earn TC", value: "`,daily` — claim daily reward **(500 TC, 24h cooldown)**\n`,work` — earn TC every **1 hour**\n`,jobs list` — browse jobs for better pay\n`,jobs apply <id>` — apply for a job", inline: false },
-    ],
-  },
-  casino: {
-    label: "🎰  Casino",
-    emoji: "🎰",
-    color: 0xE67E22,
-    fields: [
-      { name: "Slots 🎰", value: "`,slots <bet>` — spin for 🍋🍒🔔💎7️⃣⭐\nThree of a kind = jackpot up to **25×**", inline: false },
-      { name: "Blackjack 🃏", value: "`,blackjack <bet>` (`,bj`) — click **Hit / Stand / Double Down**\nNatural 21 = **2.5×** payout", inline: false },
-      { name: "Roulette 🎡", value: "`,roulette <bet> <red|black|green|0-36>`\n🔴/⚫ = 2×  ·  🟢 = 14×  ·  Number = 35×", inline: false },
-      { name: "Boosts", value: "`,shop buy luck_potion` — casino wins **1.5×** for 1h (500 TC)", inline: false },
-    ],
-  },
-  shop: {
-    label: "🛒  Shop & Mine",
-    emoji: "🛒",
-    color: 0x5865F2,
-    fields: [
-      { name: "Shop", value: "`,shop` — browse all items with a **select menu**\nQuick-buy directly from the menu!", inline: false },
-      { name: "🎰 Boosts", value: "🧪 `luck_potion` **500 TC** — Casino 1.5× for 1h\n📜 `xp_scroll` **1,000 TC** — 2× XP for 30min\n💊 `stat_capsule` **2,500 TC** — +2 stat points", inline: false },
-      { name: "⛏️ Mine System", value: "⛏️ `mine_category` **50,000 TC** — private mine category\n📺 `mine_channel` **8,000 TC** — add a channel\n🏭 `machine` **10,000 TC** — mining machine\n👷 `worker` **15,000 TC** — +25% boost per machine\n🤖 `auto_collector` **25,000 TC** — auto-collect every 6h", inline: false },
-      { name: "Mine Commands", value: "`,addmachine <ch#>` — place a machine\n`,addworker <ch#>` — assign a worker\n`,addcollector <ch#>` — install auto collector", inline: false },
-    ],
-  },
-  leveling: {
-    label: "⭐  Leveling & Jobs",
-    emoji: "⭐",
-    color: 0x9B59B6,
-    fields: [
-      { name: "Profile & Stats", value: "`,profile [@user]` (`,prof`, `,rank`) — level card, stats, job & wealth\n`,stats` — view stats with **upgrade buttons**\n`,stats upgrade <str|int|cha|lck> [amt]` — spend points", inline: false },
-      { name: "Stats Explained", value: "💪 **STR** — Driver, Security Guard jobs\n🧠 **INT** — Teacher, Programmer, Doctor, CEO\n🎭 **CHA** — Lawyer, Celebrity, CEO\n🍀 **LCK** — Casino odds & rare bonuses", inline: false },
-      { name: "Jobs", value: "`,jobs list` — see all jobs and requirements\n`,jobs apply <id>` — apply for a job\nHigher jobs = more TC per `,work`", inline: false },
-      { name: "Role Shop 🎭", value: "`,roleshop` — exclusive **Level 100** cosmetic roles\nRoles: 👑 King · ⚔️ Warlord · 🔮 Archmage · 💎 Diamond · 🔥 Inferno · 🌑 Shadow", inline: false },
-    ],
-  },
   fun: {
     label: "🎉  Fun & Engagement",
     emoji: "🎉",
@@ -118,7 +76,6 @@ const CATEGORIES = {
       { name: "🖼️ Avatar", value: "`,avatar [@user]` (`,av`, `,pfp`) — full-size avatar with download links\nShows server avatar vs global avatar when different", inline: false },
       { name: "🎬 GIF Maker", value: "`/gif` — upload an image or paste a URL, with an optional caption\n`,gif [caption]` — reply to an image/GIF with this to convert it (caption optional)\n`,caption gif <url> <caption>` — caption an animated GIF by URL\n> Captions appear as a white bar above the image, meme-style. Animated GIFs stay animated.", inline: false },
       { name: "🔍 Snipe", value: "`,snipe` (`,s`) — shows the last deleted message in this channel\n`,snipe 2`, `,snipe 3`, etc. — go back further (up to 100 stored per channel)\nIncludes author, content, attachments & how long ago it was deleted", inline: false },
-      { name: "🎚️ Server Toggles", value: "`,levelon` / `,leveloff` — enable/disable XP & level-up messages *(Admin)*\n`,channelon` / `,channeloff` — enable/disable shop auto-channel creation *(Admin)*", inline: false },
       { name: "🤖 AI Chat — Toggle", value: "`,aion` — turn AI chat **ON** *(Manage Server)*\n`,aioff` — turn AI chat **OFF** *(Manage Server)*\n`,aistatus` — which AI provider is active *(Admin)*", inline: false },
       { name: "🤖 AI Chat — Commands", value: "`,aiask <question>` — one-off AI answer, no memory stored\n`,aiclear` — wipe bot memory for this channel *(Manage Messages)*\n`,aimemory` — see what bot remembers in this channel *(Manage Messages)*\n`,aimodel` — show current active AI provider\n`,resetcooldown <gemini|groq|openrouter|all>` — manually clear a rate-limited provider *(Admin)*", inline: false },
       { name: "📥 Social Media Downloader", value: "Paste any link and Tofin auto-downloads it:\n**TikTok** · **Instagram** · **Twitter/X** · **Reddit**\n**YouTube Shorts** · **Twitch Clips** · **Vimeo** · **Pinterest**\n> No command needed — just drop the link", inline: false },
@@ -142,10 +99,6 @@ function overviewEmbed(author) {
       `> Use the **menu below** to browse command categories!\n\n` +
       `**<:moderation:1519184871136825395>  Moderation** — mute, ban, warn, purge\n` +
       `**<:informationbutton:1519185565222830191>  Roles & Info** — role management, userinfo\n` +
-      `**<:circulareconomy:1519185825617936404>  Economy** — balance, daily, work, transfer\n` +
-      `**🎰  Casino** — slots, blackjack, roulette\n` +
-      `**🛒  Shop & Mine** — buy items, mine system\n` +
-      `**⭐  Leveling & Jobs** — stats, profile, role shop\n` +
       `**🎉  Fun** — polls, giveaways, games\n` +
       `**💾  Server Tools** — backups, templates, owner tools\n` +
       `**📜  Server List** — view & manage listed servers\n` +

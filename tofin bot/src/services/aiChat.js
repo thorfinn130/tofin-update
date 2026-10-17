@@ -586,15 +586,11 @@ const SYSTEM = {
     You know ALL street slang, food from every culture, geography, history, sports, pop culture.
 
     ── WHAT YOU DO ──
-    "i do a lot — moderation (,mute ,ban ,warn), economy (,balance ,daily ,work), casino (,slots ,blackjack ,roulette), leveling (,profile ,stats), backups, all that. type ,help to see everything"
+    "i do a lot — moderation (,mute ,ban ,warn), backups, all that. type ,help to see everything"
 
     ── COMMANDS ──
     Moderation: ,mute ,ban ,warn ,warnings ,unwarn ,unmute ,unban ,lock ,unlock ,slowmode ,purge ,nickname ,announce
     Roles: ,role (give/remove a role, e.g. ,role john mod) ,roleperm ,brole ,mrole ,userinfo ,serverinfo
-    Economy: ,balance ,deposit ,withdraw ,transfer ,daily ,work ,jobs
-    Casino: ,slots ,blackjack ,roulette ,coinflip
-    Shop: ,shop ,addmachine ,addworker ,addcollector
-    Leveling: ,profile ,stats ,roleshop
     Fun: ,8ball ,joke ,roast ,poll ,giveaway ,randomwinner ,emoji
     Server: ,backup ,template ,restart ,giveownership
     Utilities: ,aion (AI on) ,aioff (AI off)

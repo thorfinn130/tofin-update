@@ -8,9 +8,6 @@ const logging  = require("./services/logging");
 const giveaway = require("./services/giveaway");
 const { track: trackMessage } = require("./services/messageTracker");
 const inviteTracker = require("./services/inviteTracker");
-const { addXP } = require("./services/leveling");
-const { runAutoCollect } = require("./services/machines");
-const { addWallet, fmt } = require("./services/economy");
 const aiChat = require("./services/aiChat");
 const { extractGifUrl, saveGif } = require("./services/gifMemory");
 const { storeDelete } = require("./commands/prefix/snipe");
@@ -76,7 +73,6 @@ client.once("clientReady", async () => {
     ],
   });
 
-  startAutoCollectLoop();
   startJailExpiryLoop();
   startReminderLoop();
   giveaway.startLoop(client);
@@ -155,15 +151,6 @@ client.on("messageCreate", async (m) => {
 
   trackMessage(m.guild.id, m.author.id);
 
-  const { isLevelingEnabled } = require("./commands/prefix/leveltoggle");
-  if (isLevelingEnabled(m.guild.id)) {
-    const result = addXP(m.guild.id, m.author.id);
-    if (result?.leveled) {
-      m.channel.send({
-        content: `🎉 ${m.author} leveled up to **Level ${result.level}**! You earned **3 stat points** — use \`,stats\` to spend them with the upgrade buttons!`,
-      }).catch(() => {});
-    }
-  }
   prefix.handle(m);
   aiChat.chat(m).catch(() => {});
 });
@@ -267,39 +254,6 @@ client.on("guildMemberAdd", async (member) => {
 client.on("guildMemberRemove", (member) => {
   inviteTracker.onMemberLeave(member.guild.id, member.id);
 });
-
-// ── Auto Collect Loop ─────────────────────────────────────────────────────────
-function startAutoCollectLoop() {
-  const CHECK_INTERVAL = 10 * 60_000;
-
-  setInterval(async () => {
-    try {
-      const results = runAutoCollect();
-      if (!results.length) return;
-
-      for (const r of results) {
-        addWallet(r.userId, r.earned);
-        try {
-          const guild   = client.guilds.cache.get(r.guildId);
-          if (!guild) continue;
-          const channel = guild.channels.cache.get(r.channelId);
-          if (!channel) continue;
-          const { EmbedBuilder } = require("discord.js");
-          await channel.send({ embeds: [
-            new EmbedBuilder()
-              .setTitle("🤖  Auto Collector")
-              .setDescription(`Collected **${fmt(r.earned)} TC** from Machine #${r.channelNum}!\n> 💳 Added directly to your wallet`)
-              .setColor(0x3498DB)
-              .setFooter({ text: "Tofin Mine  ·  Auto-collects every 6h" })
-              .setTimestamp(),
-          ] });
-        } catch {}
-      }
-    } catch (e) {
-      console.error("[autoCollect]", e);
-    }
-  }, CHECK_INTERVAL);
-}
 
 // ── Jail Expiry Loop ───────────────────────────────────────────────────────────
 function startJailExpiryLoop() {

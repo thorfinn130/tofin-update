@@ -1,5 +1,4 @@
 const { read, write } = require("../storage");
-const { hasBuff } = require("./buffs");
 
 const STORE = "leveling";
 const JOBS_STORE = "custom_jobs";
@@ -63,7 +62,7 @@ function addXP(guildId, userId) {
   xpCooldowns.set(key, now);
 
   const u = getUser(guildId, userId);
-  const xpGain = hasBuff(guildId, userId, "xp_boost") ? XP_PER_MSG * 2 : XP_PER_MSG;
+  const xpGain = XP_PER_MSG;
   u.xp += xpGain;
   let leveled = false;
   while (u.xp >= xpNeeded(u.level)) {

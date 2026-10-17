@@ -36,15 +36,6 @@ const sections = [
     inline: false,
   },
   {
-    name: "📊  Multi-Stat Upgrade (everyone)",
-    value: [
-      "`,stats upgrade str` → +1 STR",
-      "`,stats upgrade str 3` → +3 STR",
-      "`,stats upgrade str 2 int cha 3` → +2 STR, +1 INT, +3 CHA",
-    ].join("\n"),
-    inline: false,
-  },
-  {
     name: "🌍  Server Ownership (per-server, Discord server owner only)",
     value: [
       "`,restart` — wipe all channels, roles & kick bots",
