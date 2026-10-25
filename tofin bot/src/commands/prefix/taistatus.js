@@ -14,7 +14,7 @@ module.exports = {
     const now = Date.now();
 
     const lines = providers.map((p, i) => {
-      const priority = i === 0 ? " *(primary)*" : i === 1 ? " *(fallback 1)*" : " *(fallback 2)*";
+      const priority = p.hasKey ? ` *(${p.keyCount} key${p.keyCount === 1 ? "" : "s"})*` : "";
 
       if (!p.hasKey) {
         return `⬜ **${p.name}**${priority}\n> No API key set`;
@@ -39,7 +39,7 @@ module.exports = {
       .addFields({ name: "Overall", value: statusText, inline: false })
       .setColor(color)
       .setTimestamp()
-      .setFooter({ text: "Tofin tries providers in order: Gemini → Groq → OpenRouter" });
+      .setFooter({ text: "If a key runs out, Tofin instantly switches to the next key or provider" });
 
     return message.reply({ embeds: [embed] });
   },

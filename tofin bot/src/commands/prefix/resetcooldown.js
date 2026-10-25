@@ -1,7 +1,7 @@
 const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { resetProviderCooldown, getAIStatus } = require("../../services/aiChat");
 
-const VALID = ["gemini", "groq", "openrouter", "all"];
+const VALID = ["gemini", "groq", "mistral", "openrouter", "huggingface", "all"];
 
 module.exports = {
   name: "resetcooldown",
@@ -15,7 +15,7 @@ module.exports = {
 
     if (!target || !VALID.includes(target)) {
       return message.reply({
-        content: `❌ Usage: \`,resetcooldown <gemini|groq|openrouter|all>\``,
+        content: `❌ Usage: \`,resetcooldown <gemini|groq|mistral|openrouter|huggingface|all>\``,
       });
     }
 

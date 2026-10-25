@@ -54,4 +54,12 @@ async function handle(message) {
   }
 }
 
-module.exports = { loadCommands, handle };
+function getCommand(name) {
+  return commands.get(String(name).toLowerCase());
+}
+
+function commandNames() {
+  return [...new Set([...commands.values()].map((c) => c.name))];
+}
+
+module.exports = { loadCommands, handle, getCommand, commandNames };

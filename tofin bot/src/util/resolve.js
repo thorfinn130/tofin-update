@@ -97,6 +97,21 @@ function resolveRole(guild, input) {
   return { role: hit.item, guessed: !hit.exact, score: hit.score };
 }
 
+// Returns { channel, guessed, score } or null. `types` = optional array of ChannelType numbers.
+function resolveChannel(guild, input, types = null) {
+  if (!input) return null;
+  const id = String(input).match(/^<#(\d{15,25})>$/)?.[1] ?? (/^\d{15,25}$/.test(input) ? input : null);
+  if (id) {
+    const c = guild.channels.cache.get(id);
+    return c && (!types || types.includes(c.type)) ? { channel: c, guessed: false, score: 100 } : null;
+  }
+  const query = String(input).replace(/^#/, "");
+  const pool = [...guild.channels.cache.values()].filter((c) => !types || types.includes(c.type));
+  const hit = pickBest(query, pool, (c) => [c.name]);
+  if (!hit) return null;
+  return { channel: hit.item, guessed: !hit.exact, score: hit.score };
+}
+
 // Suggest the closest of several plain strings (subcommands, preset names...)
 function closest(input, options) {
   const hit = pickBest(input, options, (o) => [o]);
@@ -121,5 +136,5 @@ function roleFromArgs(message, args, from = 0) {
 const guessNote = (what, typed, got) => `\n> 🔎 I guessed **${got}** from "${typed}".`;
 
 module.exports = {
-  score, closest, resolveMember, resolveRole, memberFromArgs, roleFromArgs, guessNote, norm,
+  score, closest, resolveMember, resolveRole, resolveChannel, memberFromArgs, roleFromArgs, guessNote, norm,
 };

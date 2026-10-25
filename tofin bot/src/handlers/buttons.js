@@ -95,6 +95,7 @@ async function handle(interaction) {
     if (interaction.isButton()) {
       const action = interaction.customId.split(":")[0];
       if (action.startsWith("gw_")) return handleGiveawayButton(interaction);
+      if (action.startsWith("aiconf_")) return require("../services/ai/tools").handleConfirmButton(interaction);
     }
     if (interaction.isStringSelectMenu()) {
       const action = interaction.customId.split(":")[0];

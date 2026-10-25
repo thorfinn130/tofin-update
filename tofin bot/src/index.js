@@ -334,3 +334,7 @@ deployCommands().catch(() => {});
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 client.login(token);
+
+// Keep the bot alive for days: log stray errors instead of crashing.
+process.on("unhandledRejection", (e) => console.error("[unhandledRejection]", e?.message || e));
+process.on("uncaughtException", (e) => console.error("[uncaughtException]", e?.message || e));
